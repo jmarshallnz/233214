@@ -1,0 +1,243 @@
+---
+title: "Point patterns - estimation and modelling disease data"
+author: "YOUR NAME HERE"
+date: "Week 11"
+output: html_document
+---
+
+## Introduction
+
+In this worksheet we will continue with using kernel density estimates to estimate the spatial intensities
+of point patterns from Poisson processes. We'll first look at how we can extend our ideas of KDEs to look
+at adaptive bandwidths, will then look at the importance of denominators, and how we can compute risk surfaces. Finally, we'll look at how we might model the spatial intensity of a point pattern by incorporating spatially varying covariates.
+
+**You should work through this worksheet, but do not need to hand it in as part of your Portfolio. Once done, you should then work through and hand in the portfolio_week11.Rmd worksheet.**
+
+## Packages
+
+Today we'll be using the `tidyverse` for ggplot charts, and `spatstat` and `sparr` for our spatial analyses. Let's load them:
+
+```{r, message=FALSE}
+library(tidyverse)
+library(spatstat)
+library(sparr)
+```
+
+## Data
+
+The data for this worksheet is available within the `spatstat` package, and is a famous dataset of lung
+and larynx cancer cases from the Chorley and South Ribble area of Lancashire in the United Kingdom between 1974 and 1983. You can read about it by typing `?chorley`.
+
+Let's load it, and look at the data structure
+```{r}
+data(chorley)
+class(chorley)
+chorley
+```
+
+We can see it's a planer point pattern object (class `ppp`) and is Multitype with two levels - larynx and lung.
+
+The coordinates are linear (i.e. the `x` and `y` locations are in km), so we don't need to worry about the CRS for the analysis that we're doing, or for our planer plots. We would need to worry about this if we wanted to align the points with other mapping tools!
+
+Our key question concerns the larynx cancer case locations. This is a rare form of cancer, and there is a thought that some of these cases may be due to breathing dioxins from the burning of organic solvents. There was an industrial incinerator located in the area.
+
+We're going to treat the lung cancer locations as being a proxy for the susceptible population, and assess whether there might be a link to the incinerator.
+
+## Data exploration
+
+We'll start by plotting the data using the normal `plot` function from `spatstat`. To make things
+a little clearer, we'll use some different plotting characters and colours (found via ?plot.ppp)
+
+```{r}
+plot(chorley, chars=c(2,1), cols=c('red', 'blue'))
+```
+
+### Q1: Looking at the above plot, would you think the point process for lung cancer is random across the area? Would a homogeneous Poisson point process (complete spatial randomness) be appropriate?
+
+WRITE YOUR ANSWER HERE
+
+It's a bit hard to see what is going on still, as the lung cancer cases obscure where the larynx cases
+are. Let's split them out and build the plot ourselves:
+
+```{r}
+larynx <- split(chorley)$larynx
+lung   <- split(chorley)$lung
+
+plot(chorley$window, main="Chorley-Ribble lung data")
+points(lung, pch=2, col='blue')
+points(larynx, pch=19, col='red')
+```
+
+We can also do this using `ggplot` by first translating things into data frames.
+
+```{r}
+chorley.df <- as.data.frame(chorley) %>%
+  arrange(desc(marks))
+chorley.win <- as.data.frame(chorley$window)
+
+ggplot(data=chorley.df) +
+  geom_point(aes(x=x, y=y, col=marks)) +
+  geom_polygon(data=chorley.win, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed()
+```
+
+### Q2: What do you think of the distribution of larynx cases compared to lung cases? Do you think they follow roughly the same distribution? What might you do to confirm this do you think?
+
+WRITE YOUR ANSWER HERE
+
+One way to look if the patterns for larynx and lung cancers are similar is to estimate their spatial intensities. Let's start by looking at the larynx cases:
+
+```{r}
+larynx.dens <- density(larynx)
+plot(larynx.dens)
+```
+
+This looks like oversmoothing - we can't really see much detail at all here. We'll fine tune it a bit by adjusting the bandwidth down. The current amount of smoothing can be found in the `sigma` attribute:
+
+```{r}
+attr(larynx.dens, "sigma") # smoothing amount
+```
+
+So let's try re-fitting the density with sigma=1 instead:
+
+```{r}
+larynx.dens <- density(larynx, sigma=1)
+plot(larynx.dens)
+```
+
+In the code block below, produce a density surface for the lung cancer data using the same smoothing bandwidth (i.e. `sigma=1`).
+
+```{r}
+
+```
+
+### Q3: What is your conclusion about where larynx cases are compared to lung cases? Is there any areas where you suspect increased or decreased incidence of larynx cases compared to lung cases?
+
+WRITE YOUR ANSWER HERE
+
+## Adaptive smoothing using sparr
+
+You should have noticed that the lung and larynx data are highly clustered - this makes sense, as there are townships within this area where most of the people live. Plotting the incidence of lung or larynx cancers is
+mostly just plotting where people are.
+
+Given that the population is clustered, by using a constant bandwidth in our KDEs we may be oversmoothing in
+the towns, where there are lots of people, and undersmoothing in the countryside, where there are few people.
+
+The `sparr` package function `bivariate.density` can do adaptive kernel density estimation. We need to supply it a pilot bandwidth to use, so we'll just use `h0=1` from above:
+
+```{r}
+larynx.dens2 <- bivariate.density(larynx, h0=1, adapt=TRUE)
+lung.dens2 <- bivariate.density(lung, h0=1, adapt=TRUE)
+plot(larynx.dens2)
+points(larynx, cex=0.2)
+plot(lung.dens2)
+points(lung, cex=0.2)
+```
+
+### Q4: Compare the adaptive kernel density estimates with the fixed bandwidth estimates. Which one do you think captures the data better?
+
+WRITE YOUR ANSWER HERE
+
+## Risk surfaces
+
+As we'd expect both of these point patterns to be largely driven by where people live (you need a person before you have a person with either cancer!), it is useful to look at risk surfaces for larynx compared to lung, by looking at the ratio of the two densities. The `sparr` package can do this with the `risk` function:
+
+```{r}
+rr <- risk(larynx.dens2, lung.dens2)
+plot(rr)
+```
+
+By default, the palette choice is poor. The colouring is based on the log risk ratio, so a value of 0 means 'same risk of either cancer' and values below zero mean 'less risk of larynx cancer', while values above zero mean 'more risk of larynx cancer'.
+
+### Q5: Why do you think a log scale is used here? *Hint: Think about what risk ratios of 1/2 and 2 mean, and what these would translate to on a log scale.*
+
+WRITE YOUR ANSWER HERE.
+
+We can improve the colouring with a bit of work. This code generates a set of breaks for our colour scale, noting that most of the log risk ratio is between -2 and 2, and ensures it's centered. We use the `hcl.colors` function to get a diverging scale (recall: this is one with a neutral colour in the middle) to highlight areas of increased risk (red) or decreased risk (blue) of cancer of the larynx compared to cancer of the lung.
+
+```{r}
+col_breaks = c(-10, seq(-2, 2, by=0.1),10)
+col_breaks
+num_cols = length(col_breaks) - 1
+num_cols
+cols = hcl.colors(num_cols, "blue-red")
+plot(rr, breaks=col_breaks, col = cols)
+points(larynx, cex=0.2)
+```
+
+### Q6: Do you think there is good evidence for any locations of increased risk, given the number of observations you have in the larynx data set?
+
+WRITE YOUR ANSWER HERE
+
+The `sparr` package has a function `tolerance` for computing some estimates of whether the log risk ratio increases (or decreases) are plausibly by chance. This produces point-wise p-value surfaces through either asymptotic theory or monte-carlo simulation.
+
+```{r}
+tol <- tolerance(rr)
+plot(rr, breaks=col_breaks, col = cols)
+tol.contour(tol, levels=c(0.1, 0.05, 0.01), add=TRUE)
+points(larynx, cex=0.2)
+```
+### Q7: Notice that in the highlighted area in the west there are only two case observations. Do you think that it is fair to call this an increased risk?
+
+## The incinerator
+
+Let's add the location of the incinerator to the last plot:
+
+```{r}
+plot(rr, breaks=col_breaks, col = cols)
+tol.contour(tol, levels=c(0.1, 0.05, 0.01), add=TRUE)
+points(larynx, cex=0.2)
+points(chorley.extra$incin, pch=17, cex=1.5)
+```
+
+### Q8: Given that cancer of the larynx might be associated with dioxins from the burning of organic solvents, what is your conclusion regarding the cluster of points in the south?
+
+## Modelling using ppm
+
+We'll now attempt to construct a model for the larynx cases. For the model we'll need some covariates, as otherwise the model will be of complete spatial randomness, which won't make sense! We could use a map of population as a sensible covariate - in this case we'll use our density surface from the lung cancer cases:
+
+```{r}
+lung.im <- lung.dens2$z
+out <- ppm(larynx ~ log(lung.im))
+out
+```
+As expected, we see that there is a strong positive relationship between the location of larynx cases and the density of lung cancer cases.
+
+### Q9: Why was `log(lung.im)` used in the model, and not just `lung.im`? *Hint: think about how the linear predictor poisson process model is formed.*
+
+WRITE YOUR ANSWER HERE
+
+Let's now generate a surface for the distance from the incinerator. If we assume that wind is not an issue, then we'd expect any contamination from the incinerator to roughly disperse proportional to the area it covers, so proportional to the inverse distance from the incinerator squared.
+
+The following code does this: we start by using `expand.grid` to pull out the x,y coordinates of every pixel to be used in our model (from the `lung.im` pixel image), and then use the `crossdist` function to compute the inverse squared distance from these to our incinerator. We then add this to our data.frame as `z`:
+
+```{r}
+pts <- expand.grid(x=lung.im$xcol, y=lung.im$yrow)
+dist <- 1/crossdist(pts$x, pts$y, chorley.extra$incin$x,
+                    chorley.extra$incin$y)^2
+pts <- pts %>% mutate(z = dist)
+```
+
+To get back to the image we want, we first want to discard the pixels outside our boundary. One way to do this is to convert to `ppp` with the appropriate window, then back to a `data.frame`. We then convert to a pixel image and plot:
+
+```{r}
+pts <- as.data.frame(as.ppp(pts, W = larynx$window))
+pts.im <- as.im(pts)
+plot(log(pts.im))
+```
+
+Finally, we can fit our model using `log(pts.im)` as an additional covariate layer:
+
+```{r}
+out <- ppm(larynx ~ log(lung.im) + log(pts.im))
+out
+```
+
+### Q10: What is your conclusion from this? Do we have statistical evidence of an effect here do you think?
+
+WRITE YOUR ANSWER HERE
+
+### Q11: Finally, based on all you've seen in this workshop, do you think there might be a link between the incinerator and the cluster of larynx cancer cases in the south?
+
+WRITE YOUR ANSWER HERE
+

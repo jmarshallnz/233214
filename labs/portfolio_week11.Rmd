@@ -15,7 +15,7 @@ at adaptive bandwidths, will then look at the importance of denominators, and ho
 
 ## Packages
 
-Today we'll be using the `tidyverse` for ggplot charts, `sparr` for our spatial analyses, and will use `raster` and `maptools` for loading up a pixel image. Let's load them:
+Today we'll be using the `tidyverse` for ggplot charts, `sparr` for our spatial analyses, and will use `raster` and `maptools` for loading up a pixel image. You might need to install the `maptools` package if you haven't done so already. Let's load them:
 
 ```{r, message=FALSE}
 library(tidyverse)

@@ -1,0 +1,25 @@
+---
+title: "Point patterns - estimation and modelling disease data"
+date: "Week 11"
+output: html_document
+---
+
+## Introduction
+
+This week we will continue working with point patterns, and will look at:
+
+  - [Adaptive kernel density estimation](../notes/week11_adaptive_kde.html) where we allow the bandwidth to vary across the region.
+  
+  - [Relative risk estimation](../notes/week11_relative_risk.html), where we use a ratio of density estimates to estimate risk of disease across a region.
+  
+  - [Point pattern modelling](../notes/week11_modelling.html), where we implement a parametric statistical model for locations.
+
+You should utilise the material in the notes above and then work through the workshop sheet below (Right click -> Save link as, and load into RStudio):
+
+[week11_workshop.Rmd](week11_workshop.Rmd)
+
+Once you've worked through that, download the portfolio sheet below, work through and add answers, Knit to HTML and upload to the stream dropbox.
+
+[week11_portfolio.Rmd](week11_portfolio.Rmd)
+
+Any questions, please contact Jonathan M

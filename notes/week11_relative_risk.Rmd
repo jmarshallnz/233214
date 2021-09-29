@@ -1,0 +1,164 @@
+---
+title: "Relative risk estimation from point patterns"
+date: "Week 11"
+output: html_document
+bibliography: references.bib
+---
+
+## Kernel density estimation
+
+Kernel density estimation is a way to get an idea of where in a region there is a high density of observations, and where there are low density.
+
+However, this doesn't necessarily tell us all that much, other than 'this is where points are typically'.
+
+As an example, suppose we take the locations of 761 cases of primary biliary cirrhosis in north-eastern England collected between 1987 and 1994 from the `pbc` dataset in the `sparr` package [@sparr].
+
+By plotting these and estimating their density, we might like to think that there is a high density area of cases of primary biliary cirrhosis around the yellow region in the west.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(sparr)
+library(patchwork)
+
+data(pbc)
+cases <- split(pbc)$case
+
+adapt <- bivariate.density(cases, h0=3.5, adapt=TRUE, verbose=FALSE)$z %>% as.data.frame()
+window = as.data.frame(pbc$window)
+
+g1 = ggplot(cases %>% as.data.frame()) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  geom_point(aes(x=x, y=y), alpha=0.5, shape='circle filled') +
+  coord_fixed() +
+  theme_void()
+
+g2 = ggplot(adapt) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  scale_fill_viridis_c(guide='none') +
+  coord_fixed() +
+  theme_void()
+
+g1 + g2
+```
+
+However, it is very likely just that more people are present in this location, and not that more people with disease are there.
+
+To assess whether there might be more disease in an area, we need to account for the underlying distribution of people first.
+
+The `pbc` dataset also has set of controls - locations of people who do not have the disease. We visualise these below:
+
+```{r}
+all = pbc %>% as.data.frame()
+window = as.data.frame(pbc$window)
+
+ggplot(all) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  geom_point(aes(x=x, y=y), alpha=0.5, shape='circle filled') +
+  coord_fixed() +
+  theme_void() +
+  facet_wrap(vars(marks))
+```
+
+It seems that most of the trend in the density of cases is mostly due to the density of controls - i.e. it is being driven by the density of people, not the density of people with disease.
+
+## Relative risk
+
+One way to address this is to use an estimate of **relative risk**. We can do this by estimating the ratio of the density of cases of disease $f$ to the density of controls $g$. i.e.
+
+$$
+\mathsf{\mbox{Relative risk at location }\mathbf{x}} = \rho(\mathbf{x}) = \frac{f(\mathbf{x})}{g(\mathbf{x})}
+$$
+
+We can then estimate $\rho(\mathbf{x})$ using kernel density estimates of $f$ and $g$.
+
+We typically look at $\log(\rho)$ rather than $\rho$ as this results in the scale being symmetric - a relative risk of $2$ and a relative risk of $\frac{1}{2}$ are the same distance away from the relative risk of 1 when treated on the log scale.
+
+### Example
+
+Let's compute the relative risk of primary biliary cirrhosis by first computing adaptive kernel density estimates of cases and controls:
+
+```{r}
+cases <- split(pbc)$case
+controls <- split(pbc)$control
+
+cases.dens <- bivariate.density(cases, h0=3.5, adapt=TRUE, verbose=FALSE)
+controls.dens <- bivariate.density(controls, h0=3.5, adapt=TRUE, verbose=FALSE)
+
+bind_rows(Cases=as.data.frame(cases.dens$z),
+          Controls=as.data.frame(controls.dens$z), .id='which') %>%
+  ggplot() +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  facet_wrap(vars(which)) +
+  scale_fill_viridis_c() +
+  coord_fixed() +
+  theme_void()
+```
+
+Based on this, it does seem that there is higher density in the cases compared to the controls in the populous area.
+
+Now we have estimated the case and control densities, we can compute the log relative risk using the `risk` function in `sparr`:
+
+```{r}
+rr <- risk(cases.dens, controls.dens)
+
+rr.df <- as.data.frame(rr$rr)
+ggplot(rr.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  scale_fill_gradient2(high = 'dark red', low = 'dark blue')
+```
+
+This shows that there are places of higher risk (risk > 1, log(risk) > 0, red) and places of lower risk (risk < 1, log(risk) < 0, blue).
+
+### Tolerance contours
+
+Of interest is whether these areas of increased risk might be a real phenomenon, or potentially an artifact from a sample. In this case, we suspect there probably is something going on as our sample sizes are quite large (761 cases, 3200 controls). Nonetheless, it would be useful to use the sample size information to gauge whether the results we see on our relative risk surfaces might be due to chance.
+
+We can do this with tolerance contours computed from a p-value surface: We first compute p-values at each location $\mathbf{x}$ (the probability that we would observe a risk similar or more extreme than our estimated risk, given that the relative risk was 1 in the population) and use that to generate contours corresponding to specific levels of p-values such as $P=0.05$ or $P=0.01$. Areas that the contours enclose are those that are worth investigating further - areas with P-values that are large are of no concern.
+
+The `tolerance` function in R can compute p-value surfaces. We've plotted the p-value surface on the right here:
+
+```{r}
+tol = tolerance(rr, verbose=FALSE)
+tol.df = as.data.frame(tol)
+
+g1 = ggplot(rr.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  labs(title = "Relative risk", fill="log(risk)") +
+  scale_fill_gradient2(high = 'dark red', low = 'dark blue')
+
+g2 = ggplot(tol.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  labs(title="P-values", fill="P value") +
+  scale_fill_viridis_c(direction=-1, trans=scales::log10_trans(), labels=scales::label_comma())
+
+g1 + g2
+```
+
+There does seem to be some evidence (low p-values) in areas corresponding to high risk. This might
+be more usefully represented via contours on top of the relative risk plot:
+
+```{r}
+ggplot(rr.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_contour(data=tol.df, mapping=aes(x=x, y=y, z=value, linetype=as_factor(..level..)),
+               breaks=c(0.05, 0.01), col='black') +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  labs(title = "Relative risk", fill="log(risk)", linetype = "p-value") +
+  scale_fill_gradient2(high = 'dark red', low = 'dark blue')
+```
+
+### References
+

@@ -1,0 +1,127 @@
+---
+title: "Modelling point patterns"
+date: "Week 11"
+output: html_document
+bibliography: references.bib
+---
+
+Instead of estimating the density or intensity of points across an area, we could instead try and model where points will be using some statistical model combined with some spatial covariates.
+
+The idea is that we model the intensity of points $\lambda(\mathbf{x})$ at a location $\mathbf{x}$ on a log scale with a linear predictor of spatial covariates $v_i(\mathbf{x})$
+
+$$
+\log{\lambda(\mathbf{x})} = \beta_0 + \beta_1 v_1(\mathbf{x}) + \cdots + \beta_k v_k(\mathbf{x}),
+$$
+where $\beta_i$ are parameters to be estimated.
+
+This is essentially a parametric model of an inhomogeneous Poisson process whose intensity is conditional on a set of spatial covariates.
+
+We can model this sort of point pattern, and many more, using the `ppm` function in `spatstat` [@spatstat].
+
+```{r, include=FALSE}
+options(width=100)
+```
+
+### Data
+
+We'll start by trying to model the case distribution of primary biliary cirrhosis in north-eastern England collected between 1987 and 1994 from the `pbc` dataset in `sparr`:
+
+```{r, message=FALSE}
+library(tidyverse)
+library(sf)
+library(sparr)
+data(pbc)
+cases <- split(pbc)$case
+
+cases.df <- as.data.frame(cases)
+cases.win <- as.data.frame(pbc$window)
+
+ggplot(data=cases.df) +
+  geom_point(aes(x=x, y=y), alpha=0.5) +
+  geom_polygon(data=cases.win, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void()
+```
+
+### Model with a homogeneous Poisson process
+
+We can see that this point pattern is clearly not homogeneous, but nonetheless, let's try modelling it as such.
+
+```{r}
+library(spatstat)
+
+mod.const <- ppm(cases ~ 1)
+mod.const
+```
+
+We can see that it fits a stationery point process with intensity $\lambda=0.0947$. We can get this from the summary table where we see $\log\lambda = -2.357$, so that $\lambda = \exp(-2.357) = `r round(exp(-2.357),4)`$.
+
+This makes sense, as it is just the number of points divided by the area:
+
+```{r}
+npoints = cases$n
+area = st_as_sfc(pbc$window) %>% st_area()
+
+intensity = npoints / area
+intensity
+```
+
+### Models that depend on location
+
+A more useful model might try and use the spatial coordinates $x$ and $y$ to model the process. We might
+try a linear trend in $x$ and $y$ first:
+
+```{r}
+mod.linear <- ppm(cases ~ x + y)
+mod.linear
+```
+
+We can see here that $x$ seems to be important (low P-value), while $y$ doesn't. We could produce a plot of the resulting intensity to see how it looks:
+
+```{r}
+pred.df <- mod.linear %>% predict() %>% as.data.frame()
+
+ggplot(pred.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_point(data=cases.df, aes(x=x, y=y), shape="circle filled", alpha=0.5) +
+  coord_fixed() +
+  scale_fill_viridis_c() +
+  theme_void()
+```
+
+As expected, the fit isn't very good. We might try a second order polynomial in $x$ and $y$ perhaps:
+
+```{r}
+mod.quad <- ppm(cases ~ polynom(x, y, 2))
+
+mod.quad %>% predict() %>% as.data.frame() %>%
+  ggplot() +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_point(data=cases.df, aes(x=x, y=y), shape="circle filled", alpha=0.5) +
+  coord_fixed() +
+  scale_fill_viridis_c() +
+  theme_void()
+```
+
+This is getting closer!
+
+### Modelling with covariates
+
+A much smarter thing to do is to use covariates that might actually be driving the process, rather than just modelling the intensity in terms of the coordinate locations $x$ and $y$.
+
+In this case, we have the control data that we could use. We'll need to generate a pixel image of the density
+(or intensity) of controls to use as a predictor:
+
+```{r}
+controls <- split(pbc)$control
+controls.dens <- bivariate.density(controls, adapt=TRUE, h0=3.5, verbose=FALSE)
+controls.im <- controls.dens$z
+
+mod.controls <- ppm(cases ~ log(controls.im))
+mod.controls
+```
+
+As expected, there is a highly significant positive relationship between the log density (intensity) of controls and that of cases. This highlights the importance of taking into account the distribution of people when we look at the density of features that people might have (e.g. disease).
+
+### References
+

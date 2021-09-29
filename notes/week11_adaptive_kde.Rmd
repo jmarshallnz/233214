@@ -1,0 +1,170 @@
+---
+title: "Adaptive kernel density estimation of point patterns"
+date: "Week 11"
+output: html_document
+bibliography: references.bib
+---
+
+## Kernel density estimation
+
+Recall that kernel density estimation of a point pattern involves placing a kernel function at each point and averaging over all points to estimate density. Two things are primarily under our control when we do this: which kernel function to use, and the bandwidth, i.e. essentially the standard deviation or 'radius' of the kernels placed on each point.
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(sparr)
+library(patchwork)
+
+data(pbc)
+set.seed(2)
+cases = as.data.frame(split(pbc)$case) %>% sample_n(50) %>% slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
+window = as.data.frame(pbc$window)
+
+g1 = ggplot(cases %>% tibble::rowid_to_column()) +
+  geom_point(aes(x=x, y=y), size=3, shape='circle filled') +
+  geom_point(aes(x=x, y=y), size=7, alpha=0.6, shape='circle filled') +
+#  geom_text(aes(x=x, y=y, label=rowid)) +
+  geom_point(aes(x=x, y=y), size=12, alpha=0.3, shape='circle filled') +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void()
+
+fixed = bivariate.density(as.ppp(cases, W=pbc$window), h0=10)$z %>% as.data.frame()
+g2 = ggplot(fixed) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  guides(fill='none') +
+  scale_fill_viridis_c() +
+  theme_void()
+  
+g1 + g2
+```
+
+The equation for the kernel density estimate has the form
+$$
+\hat{f}(\mathbf{x}) = \frac{1}{n} \sum_{i=1}^n K_h(\mathbf{x} - \mathbf{x}_i)
+$$
+where $\mathbf{x}$ is the location we're evaluating the density, $\mathbf{x}_i$ for $i=1 \ldots n$ are the points in the point pattern, $K_h$ is the kernel function with bandwidth $h$.
+
+We often enforce that the kernel function is isotropic so that the value of $K_h(\mathbf{x} - \mathbf{x}_i) = K_h(d(\mathbf{x},\mathbf{x}_i))$ where $d$ is a distance measure.
+
+It turns out that the form of $K_h$ (if isotropic) doesn't particularly matter too much as long as it has typical properties (e.g. that it's maximum is at 0 and it decays to 0 at large distances suitably quickly).
+
+We often use the Gaussian kernel (from the normal distribution) which has the form
+$$
+K_h(\mathbf{x} - \mathbf{x}_i) \propto \frac{1}{h^2} \exp\left(-\frac{\vert\vert\mathbf{x} - \mathbf{x}_i\vert\vert^2}{2h^2}\right)
+$$
+You can see that $h$ here acts in the same way as the standard deviation of the normal distribution - small values of $h$ will lead to most of the density clustered tightly around the centers $\mathbf{x}_i$, while large values of $h$ will lead to a more disperse density.
+
+A key step in fitting a kernel density estimate is choosing an appropriate bandwidth $h$. The appropriate bandwidth is often a little bit of an art, but we can look at how the density estimate behaves as the number of points $n$ gets large to get some idea of it's performance, and this has been used to tune methods.
+
+### Bias and variance
+
+Two of the key properties of any statistical estimate are it's bias (accuracy) and variance (precision). Bias is a measure of how far from the truth our estimate is on average:
+
+$$
+\mathsf{Bias}(\hat{f}) = \mathsf{E}\left[\hat{f} - f\right]
+$$
+Ideally we'd want this to be small, and as $n$ gets very large, ideally this would go to zero.
+
+The other property is variance. This is a measure of how much our estimate is expected to jump around as we look at other samples from the same population:
+
+$$
+\mathsf{Variance}(\hat{f}) = \mathsf{E}\left[\left(\hat{f} - \mathsf{E}[\hat{f}]\right)^2\right]
+$$
+Again, ideally as $n$ gets really large this would also go to zero. These two things combine to give the mean integrated square error:
+
+$$
+\mathsf{MISE}(\hat{f}) = \mathsf{Bias}(\hat{f})^2 + \mathsf{Variance}(\hat{f})
+$$
+So by minimising the mean integrated squared error, we minimise both bias and variance.
+
+It can be shown that as $n\rightarrow\infty$, 
+$$
+\mathsf{Bias}(\hat{f}) \sim O(h^2), \quad \mathsf{Variance}(\hat{f}) \sim O(\frac{1}{nh^2})
+$$
+i.e. that the Bias is roughly proportional to $h^2$, while the variance is roughly inversely proportional to $nh^2$.
+
+The 'optimal' bandwidth should minimise the MISE so we want to balance $h^4$ (from the bias) and $\frac{1}{nh^2}$ from the variance, leading to $h \propto n^{-\frac{1}{6}}$.
+
+The result is that $\mathsf{MISE}(\hat{f}) \propto n^{-4/6}$, so that the mean integrated square error goes to zero, albeit slowly as $n\rightarrow\infty$.
+
+## Adaptive estimation
+
+The density estimates seen so far have a common bandwidth $h$ across the entire area of estimation. This is typically a good thing to do when the data are roughly homogeneous. However, many of the data sets that we encounter are often highly heterogeneous, such as human populations which typically cluster tightly in cities and are sparse in the countryside. Using a common bandwidth across the region will likely lead to oversmoothing where data are dense while undersmoothing where data are sparse.
+
+A solution is to allow the bandwidth $h$ to vary across the area of estimation. This allows us to smooth regions where data are sparse, while allowing more detail in places where the data are dense.
+
+It is clear that we want to choose the bandwidth $h$ so that it changes based on the density of points $f(\mathbf{x})$. Abramson [@abramson] showed that the optimal choice is to choose $h(\mathbf{x}_i) = h_0 f(\mathbf{x}_i)^{-1/2}$. Where the density of points is high, this leads to a smaller bandwidth being chosen, while if the density of points is low, a larger bandwidth will be selected.
+
+With this selection it can be shown that the variance of the adaptive kernel density estimate remains the same, while the bias reduces to being $O(h^4)$. This results in the optimal bandwidth now being $h_0 \propto n^{-\frac{1}{10}}$.
+
+The mean integrated square error now goes to zero faster: $\mathsf{MISE}(\hat{f}) \propto n^{-8/10}$ as $n\rightarrow\infty$.
+
+A key problem with this method is that it requires us to know $\hat{f}(\mathbf{x}_i)$, which is the thing we are trying to estimate.
+
+We get around this by first performing a pilot density estimate with a fixed bandwidth to estimate $f$ at the observations $\mathbf{x}_i$, and then use this to adapt the bandwidth for the final estimate.
+
+Finding the optimal bandwidth can be a little bit complicated - we have a pilot bandwidth $h_p$ to estimate first, followed by the scaling bandwidth $h_0$. The `sparr` package in R can be used for this.
+
+### Example of adaptive estimation
+
+The `sparr` package [@sparr] in R implements the Abramson adaptive kernel density estimator. We'll utilise data on the locations of 761 cases of primary biliary cirrhosis in north-eastern England collected between 1987 and 1994. The `pbc` dataset contains both cases and controls, so we'll start by just looking at cases.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(sparr)
+data(pbc)
+cases <- split(pbc)$case
+
+cases.df <- as.data.frame(cases)
+cases.win <- as.data.frame(pbc$window)
+
+ggplot(data=cases.df) +
+  geom_point(aes(x=x, y=y), alpha=0.5) +
+  geom_polygon(data=cases.win, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void()
+```
+
+As we can see, there is clearly a heterogeneous distribution of points, with a very high density of points in the east and being mostly sparse in the west and north.
+
+We'll use the `bivariate.density` function to do the density estimation. On the left is the fixed estimate used for pilot bandwidth estimation, and on the right the adaptive estimate.
+
+```{r}
+fixed <- bivariate.density(cases, h0=3.5)
+adapt <- bivariate.density(cases, h0=3.5, adapt=TRUE, verbose=FALSE)
+
+fixed.df <- as.data.frame(fixed$z)
+adapt.df <- as.data.frame(adapt$z)
+
+bind_rows(Fixed=fixed.df,
+          Adaptive=adapt.df, .id='model') %>%
+  mutate(model = as_factor(model)) %>%
+  ggplot() +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=cases.win, aes(x=x, y=y), fill='transparent', col='black') +
+  facet_wrap(vars(model)) +
+  scale_fill_viridis_c() +
+  coord_fixed() +
+  theme_void()
+```
+
+As can be seen, the adaptive estimate has increased detail where the main group of cases are. We might
+plot the bandwidths to see how it works:
+
+```{r}
+bandwidths <- data.frame(cases.df, Fixed=fixed$h, Adaptive=adapt$h) %>%
+  pivot_longer(Fixed:Adaptive, names_to="model", values_to="Bandwidth") %>%
+  mutate(model = as_factor(model))
+
+ggplot(bandwidths) +
+  geom_polygon(data=cases.win, aes(x=x, y=y), fill='transparent', col='black') +
+  geom_point(aes(x=x, y=y, size=Bandwidth), shape='circle filled', alpha=0.5) +
+  scale_radius() +
+  facet_wrap(vars(model)) +
+  coord_fixed() +
+  theme_void()
+```
+
+### References

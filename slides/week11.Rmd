@@ -1,0 +1,605 @@
+---
+title: 'Week 11: Point patterns'
+subtitle: 'Estimation and modelling disease data'
+output:
+  xaringan::moon_reader:
+    css: [default, default-fonts, "custom.css"]
+    mathjax: "https://cdn.bootcss.com/mathjax/2.7.3/MathJax.js?config=TeX-MML-AM_CHTML"
+    nature:
+      highlightStyle: tomorrow
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: |
+        <div class="progress-bar-container">
+          <div class="progress-bar" style="width: calc(%current% / %total% * 100%);">
+          </div>
+        </div>
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sparr)
+library(patchwork)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.dim=c(4.5, 4.5), fig.retina=2, out.width="100%")
+```
+
+class: middle, inverse
+
+# Point patterns
+
+---
+
+## Point patterns
+
+Recall that a point pattern is a collection of points $\mathbf{x}$ in some region $A$.
+
+Of interest is how the points are distributed over the region.
+
+  - Are they scattered completely at random?
+  - Are they spatially clustered?
+  - Is the spatial clustering important?
+
+The tools we'll be looking at today help answer this third question.
+
+---
+
+class: middle, inverse
+
+# Kernel density estimation
+
+---
+
+## Kernel density estimation
+
+Recall that kernel density estimation of a point pattern involves placing a kernel function at each point and then averaging over all the kernels to estimate the density.
+
+```{r, echo=FALSE, fig.dim=c(8,3.5), message=FALSE}
+data(pbc)
+set.seed(2)
+cases.df = as.data.frame(split(pbc)$case) %>% sample_n(50) %>% slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
+window = as.data.frame(pbc$window)
+cases = as.ppp(cases.df, W=pbc$window)
+
+g1 = ggplot(cases.df %>% tibble::rowid_to_column()) +
+  geom_point(aes(x=x, y=y), size=3, shape='circle filled') +
+  geom_point(aes(x=x, y=y), size=7, alpha=0.6, shape='circle filled') +
+  geom_point(aes(x=x, y=y), size=12, alpha=0.3, shape='circle filled') +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void()
+
+fixed = bivariate.density(cases, h0=10)$z %>% as.data.frame()
+g2 = ggplot(fixed) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  guides(fill='none') +
+  scale_fill_viridis_c() +
+  theme_void()
+  
+g1 + plot_spacer() + g2 + plot_layout(widths = c(1,0.1,1))
+```
+
+---
+
+## Kernel density estimation
+
+The equation for the kernel density estimate with the Gaussian kernel has the form
+
+$$
+\hat{f}(\mathbf{x}) \propto \frac{1}{n} \sum_{i=1}^n \frac{1}{h^2} \exp\left(-\frac{\vert\vert\mathbf{x} - \mathbf{x}_i\vert\vert^2}{2h^2}\right)
+$$
+where:
+
+  - $\mathbf{x}$ is the location we're evaluating the density
+  - $\mathbf{x}_i$ for $i=1 \ldots n$ are the points in the point pattern
+  - $h$ is the bandwidth.
+
+A key assumption in this formulation is that $h$ is assumed to be constant across the region.
+
+---
+
+## KDE properties
+
+The **Bias** of a statistic is the expected deviation from the truth. In the case of a kernel density estimate this is:
+
+$$
+\mathsf{Bias}(\hat{f}) = \mathsf{E}\left[\hat{f} - f\right].
+$$
+
+The **Variance** of a statistic is the expected squared deviation from the expected estimate. In the case of a kernel density estimate this is:
+
+$$
+\mathsf{Variance}(\hat{f}) = \mathsf{E}\left[\left(\hat{f} - \mathsf{E}[\hat{f}]\right)^2\right].
+$$
+
+It turns out that these two measures make up the mean integrated square error (MISE):
+
+$$
+\mathsf{MISE}(\hat{f}) = \mathsf{Bias}(\hat{f})^2 + \mathsf{Variance}(\hat{f}).
+$$
+
+A good estimate thus requires both low bias and low variance in order to be useful.
+
+---
+
+## KDE properties
+
+We can evaluate the bias and variance of the kernel density estimator by assessing what happens as the sample size gets large and the bandwidth gets small. We find that as $n \rightarrow \infty$ (so that $h \rightarrow 0$),
+$$
+\mathsf{Bias}(\hat{f}) \sim O(h^2), \quad \mathsf{Variance}(\hat{f}) \sim O(\frac{1}{nh^2}).
+$$
+where $O(h^2)$ means "the bias reduces in proportion to $h^2$ as $h$ gets small".
+
+To ensure the mean integrated square error is small, we'd need the bias and variance terms to have similar performance.
+
+For $O(h^2)^2 = O(h^4)$ and $O(\frac{1}{nh^2})$ to be around the same size, then $h\propto n^{-\frac{1}{6}}$.
+
+This results in $\mathsf{MISE}(\hat{f}) \propto n^{-4/6}$, so that the mean integrated square error goes to zero as $n$ gets large, but fairly slowly.
+
+---
+
+class: middle, inverse
+
+# Adaptive kernel density estimation
+
+---
+
+## Adaptive kernel density estimation
+
+Kernel density estimates are often used where a point pattern is highly heterogeneous - we have areas of high density alongside areas that are very sparse.
+
+  - 87% of New Zealanders live in towns and cities, so there are large areas of New Zealand with very few people, while some areas have a lot of people in close proximity.
+
+Areas where data are sparse require more smoothing, while areas where data are dense require less.
+
+A kernel density estimate with a common bandwidth will result in undersmoothing in the sparse regions and oversmoothing the dense regions.
+
+A solution to this is to allow the bandwidth to differ across the region so that we can smooth over sparse regions, while giving detail in dense regions.
+
+---
+
+## Adaptive kernel density estimation
+
+We want our bandwidth to change based on the density of points $f(\mathbf{x})$, allowing more smoothing where $f$ is small, and less where $f$ is large.
+
+Abramson [@abramson] showed that the optimal choice is to choose $h(\mathbf{x}_i) = h_0 f(\mathbf{x}_i)^{-1/2}$, where $h_0$ is a 'global' bandwidth.
+
+This results in the bias reducing to $O(h^4)$, meaning the optimal bandwidth scales with $h_0 \propto n^{-\frac{1}{10}}$.
+
+We then have $\mathsf{MISE}(\hat{f}) \propto n^{-8/10}$, so we have better performance than the fixed bandwidth KDE.
+
+**BUT** we need to know $f(\mathbf{x}_i)$ to get the bandwidth adjustments, which is what we're trying to estimate!
+
+We use a fixed bandwidth estimate as a pilot estimate $\hat{f}_p$ using bandwidth $h_p$ and use that for our bandwidth adjustments.
+
+We then use an adaptive estimate using a global smoothing bandwidth $h_0$.
+
+---
+
+## Adaptive kernel density estimation
+
+The `bivariate.density` function in the `sparr` package implements the Abramson adaptive kernel density estimator.
+
+It takes a `ppp` point pattern and can estimate both fixed and adaptive estimates:
+
+```{r, echo=TRUE, eval=FALSE}
+bivariate.density(ppp, h0, hp = h0, adapt = TRUE)
+```
+
+We'll demonstrate with the very small dataset from earlier:
+
+```{r, echo=TRUE}
+library(sparr)
+cases
+```
+
+---
+
+.left-code[
+## Example: Points
+
+```{r case_plot, echo=TRUE, eval=FALSE}
+cases.df <- as.data.frame(cases)
+window.df <- as.data.frame(cases$window)
+
+ggplot(data = cases.df,
+       mapping = aes(x=x, y=y)) +
+  geom_point() +
+  geom_polygon(data = window.df,
+               fill = 'transparent',
+               col = 'black') +
+  coord_fixed() +
+  theme_void()
+```
+]
+
+.right-plot[
+```{r, ref.label='case_plot', echo=FALSE}
+```
+]
+---
+
+.left-code[
+## Example: Fixed bandwidth
+
+```{r fixed_kde, echo=TRUE, eval=FALSE}
+fixed <- bivariate.density(cases,
+                           h0=10,
+                           adapt=FALSE)
+fixed.df <- as.data.frame(fixed$z)
+
+ggplot(data = fixed.df,
+       mapping = aes(x=x, y=y)) +
+  geom_raster(
+    mapping = aes(fill=value)) +
+  geom_polygon(data = window.df,
+               fill = 'transparent',
+               col = 'black') +
+  geom_point(data = cases.df,
+             shape='circle filled') +
+  coord_fixed() +
+  scale_fill_viridis_c(limits=c(0,0.0005)) +
+  theme_void()
+```
+
+The point in the west is undersmoothed.
+]
+
+.right-plot[
+```{r, ref.label='fixed_kde', echo=FALSE}
+```
+]
+---
+
+.left-code[
+## Example: Adaptive bandwidth
+
+```{r adapt_kde, echo=TRUE, eval=FALSE}
+adapt <- bivariate.density(cases,
+                           h0=10,
+                           adapt=TRUE,
+                           verbose=FALSE)
+adapt.df <- as.data.frame(adapt$z)
+
+ggplot(data = adapt.df,
+       mapping = aes(x=x, y=y)) +
+  geom_raster(
+    mapping = aes(fill=value)) +
+  geom_polygon(data = window.df,
+               fill = 'transparent',
+               col = 'black') +
+  geom_point(data = cases.df,
+             shape='circle filled') +
+  coord_fixed() +
+  scale_fill_viridis_c(limits=c(0,0.0005)) +
+  theme_void()
+```
+
+The west is now smoothed, while there is
+more detail in the east.
+]
+
+.right-plot[
+```{r, ref.label='adapt_kde', echo=FALSE}
+```
+]
+---
+
+.left-code[
+## Example: Bandwidths
+
+```{r adapt_bw, echo=TRUE, eval=FALSE}
+library(ggforce)
+bw.df <- data.frame(cases.df,
+                    bw=adapt$h)
+
+ggplot(data = bw.df) +
+  geom_polygon(data = window.df,
+               mapping = aes(x=x, y=y),
+               fill = 'transparent',
+               col = 'black') +
+  geom_point(mapping=aes(x=x, y=y)) +
+  geom_circle(mapping=aes(x0=x, y0=y, r=bw),
+              col=NA, fill='steelblue',
+              alpha=0.5) +
+  coord_fixed() +
+  theme_void()
+```
+
+Bandwidths in sparse areas are larger.
+]
+
+.right-plot[
+```{r, ref.label='adapt_bw', echo=FALSE}
+```
+]
+---
+
+class: middle, inverse
+
+# Relative risk estimation
+
+---
+
+## Relative risk estimation
+
+Kernel density estimation is a way to get an idea of where in a region there is a high density of observations, and where there are low density.
+
+Often we might want to know this for a subset of a community, such as finding places where there is a higher chance of disease.
+
+Using a kernel density estimate for locations of disease will often just look like a map of the population: we need people before we have people with disease.
+
+It is important to consider the denominator! Are there areas with high rates of disease compared to the population living there?
+
+As all NZers know, per-capita is the best measure per-capita.
+
+---
+
+## Relative risk estimation
+
+```{r, fig.dim=c(8,3.5)}
+all = pbc %>% as.data.frame() %>%
+  mutate(marks = fct_recode(marks, Cases = "case", Controls = "control"))
+window = as.data.frame(pbc$window)
+
+ggplot(all) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  geom_point(aes(x=x, y=y), alpha=0.5, shape='circle filled') +
+  coord_fixed() +
+  theme_void() +
+  facet_wrap(vars(marks))
+```
+
+---
+
+## Relative risk estimation
+
+Instead of modelling the density or intensity of disease, we instead model the relative risk:
+$$
+\mathsf{\mbox{Relative risk at location }\mathbf{x}} = \rho(\mathbf{x}) = \frac{f(\mathbf{x})}{g(\mathbf{x})}
+$$
+
+We use kernel density estimates $\hat{f}$ and $\hat{g}$ to estimate $\hat\rho$.
+
+We typically want our risk estimate to be symmetric: a relative risk of $2$ and a relative risk of $\frac{1}{2}$ should be treated the same.
+
+We do this by displaying $\log\hat\rho(\mathbf{x})$ rather than $\hat\rho(\mathbf{x})$.
+
+---
+
+## Relative risk estimation
+
+We produce densities of the numerator and denominator:
+
+```{r, echo=TRUE}
+cases <- split(pbc)$case
+controls <- split(pbc)$control
+
+cases.dens <- bivariate.density(cases, h0=3.5, adapt=TRUE, verbose=FALSE)
+controls.dens <- bivariate.density(controls, h0=3.5, adapt=TRUE, verbose=FALSE)
+```
+
+It is usually best to use the same amount of smoothing for both densities, even if the number of points
+differs.
+
+We then combine these using the `risk` function:
+
+```{r, echo=TRUE}
+rr <- risk(cases.dens, controls.dens)
+```
+
+---
+
+## Densities
+
+```{r, fig.dim=c(8,3.5)}
+bind_rows(Cases=as.data.frame(cases.dens$z),
+          Controls=as.data.frame(controls.dens$z), .id='which') %>%
+  ggplot() +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  facet_wrap(vars(which)) +
+  scale_fill_viridis_c() +
+  coord_fixed() +
+  theme_void()
+```
+
+---
+
+.left-code[
+## Relative risk
+
+```{r risk, echo=TRUE, eval=FALSE}
+rr.df <- as.data.frame(rr$rr)
+ggplot(data=rr.df,
+       mapping=aes(x=x,y=y)) +
+  geom_raster(mapping=aes(fill=value)) +
+  geom_polygon(data=window,
+               fill='transparent',
+               col='black') +
+  coord_fixed() +
+  theme_void() +
+  scale_fill_gradient2(high='dark red',
+                       low='dark blue')
+```
+
+There are regions in the south east with
+higher risk, $\log\hat\rho>0$.
+]
+
+.right-plot[
+```{r, ref.label='risk'}
+```
+]
+
+---
+
+## Statistical importance
+
+A question we'll want to consider is whether the high (or low) risk observed in the relative risk plot are important, given our sample sizes.
+
+We can evaluate this is using a P-value surface:
+
+  - at each point  $\mathbf{x}$, estimatehow likely it is to have a relative risk similar to or larger than our observed risk $\log\hat\rho(\mathbf{x})$, if there was no additional risk in the population, $\log\rho(\mathbf{x})=0$.
+
+The `tolerance` function in `sparr` is used for this:
+
+```{r, eval=FALSE}
+pvals <- tolerance(rr)
+```
+
+We can then consider areas where we have both increased risk and a low P-value.
+
+---
+
+## Statistical importance
+
+```{r, fig.dim=c(8,3.5)}
+tol = tolerance(rr, verbose=FALSE)
+tol.df = as.data.frame(tol)
+
+g1 = ggplot(rr.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  labs(title = "Relative risk", fill="log(risk)") +
+  scale_fill_gradient2(high = 'dark red', low = 'dark blue')
+
+g2 = ggplot(tol.df) +
+  geom_raster(aes(x=x, y=y, fill=value)) +
+  geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
+  coord_fixed() +
+  theme_void() +
+  labs(title="P-values", fill="P value") +
+  scale_fill_viridis_c(direction=-1, trans=scales::log10_trans(), labels=scales::label_comma())
+
+g1 + plot_spacer() + g2 + plot_layout(widths=c(1,0.1,1))
+```
+
+---
+
+.left-code[
+## A single plot
+
+```{r pvals, echo=TRUE, eval=FALSE}
+ggplot(data=rr.df,
+       mapping=aes(x=x, y=y)) +
+  geom_raster(mapping=aes(fill=value)) +
+  geom_contour(data=tol.df,
+               mapping=aes(z=value,
+                           linetype=factor(..level..)),
+               breaks=c(0.05, 0.01),
+               col='black') +
+  geom_polygon(data=window, 
+               fill='transparent',
+               col='black') +
+  scale_fill_gradient2(high='dark red',
+                       low='dark blue') +
+  coord_fixed() +
+  theme_void() +
+  labs(fill="log(risk)",
+       linetype = "p-value")
+```
+
+There does seem to be some evidence of
+increased risk.
+]
+
+.right-plot[
+```{r, ref.label='pvals'}
+```
+]
+
+---
+
+class: middle, inverse
+
+# Modelling point patterns
+
+---
+
+## Modelling point patterns
+
+Until now our estimation of the density of point patterns has been non-parametric.
+
+  - we've been using only the observed locations, and have been estimating the underlying density
+or intensity of the point process.
+
+An alternative is modelling the underlying intensity of the process $\lambda(\mathbf{x})$ using
+a parametric statistical model.
+
+This model might depend on the location $\mathbf{x}$ or on other covariates.
+
+Essentially we assume the points arise due to a Poisson process with intensity $\lambda(\mathbf{x})$. i.e. the number of points expected in an area $A$ is given by
+$$
+n_A \sim \mathsf{Poisson(\Lambda_A)}
+$$
+where $\Lambda_A = \int_A \lambda(\mathbf{x}) d\mathbf{x}$.
+
+The `ppm` function from `spatstat` can fit these models.
+
+---
+
+## A homogeneous process
+
+```{r, echo=TRUE}
+library(spatstat)
+cases <- split(pbc)$case
+
+mod.const <- ppm(cases ~ 1)
+mod.const
+```
+
+Note that the estimates given in the model output are on the log scale, so the intensity is $\lambda=\exp(-2.357) = 0.0947$.
+
+There are 761 cases in a region of area $8034\mbox{ km}^2$, so we'd expect an intensity of $761 / 8034 = 0.0947$ observations per $\mbox{km}^2$.
+
+---
+
+## An inhomogeneous process
+
+What happens if we include the $x$ and $y$ coordinates?
+
+```{r}
+options(width=100)
+```
+
+```{r, echo=TRUE}
+mod.linear <- ppm(cases ~ x + y)
+mod.linear
+```
+
+Increasing $x$ is important - there are more cases in the east than the west. $y$ is not important.
+
+---
+
+## Using a covariate
+
+Model using log population density, which we can estimate with a kernel density of the controls.
+
+```{r, echo=TRUE}
+controls <- split(pbc)$control
+controls.dens <- bivariate.density(controls, adapt=TRUE, h0=3.5, verbose=FALSE)
+controls.im <- controls.dens$z
+
+mod.controls <- ppm(cases ~ log(controls.im))
+mod.controls
+```
+
+As expected, population density is important for describing where cases of cancer will be!
+
+---
+
+## Key things to remember
+
+- Consider using adaptive bandwidths if a point pattern is highly heterogeneous.
+
+- If modelling a disease, then relative risk is key.
+
+- Parametric models can be useful to assess specific hypotheses.

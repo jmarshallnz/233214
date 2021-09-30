@@ -167,7 +167,7 @@ A solution to this is to allow the bandwidth to differ across the region so that
 
 We want our bandwidth to change based on the density of points $f(\mathbf{x})$, allowing more smoothing where $f$ is small, and less where $f$ is large.
 
-Abramson [@abramson] showed that the optimal choice is to choose $h(\mathbf{x}_i) = h_0 f(\mathbf{x}_i)^{-1/2}$, where $h_0$ is a 'global' bandwidth.
+Abramson showed that the optimal choice is to choose $h(\mathbf{x}_i) = h_0 f(\mathbf{x}_i)^{-1/2}$, where $h_0$ is a 'global' bandwidth.
 
 This results in the bias reducing to $O(h^4)$, meaning the optimal bandwidth scales with $h_0 \propto n^{-\frac{1}{10}}$.
 
@@ -445,7 +445,7 @@ A question we'll want to consider is whether the high (or low) risk observed in 
 
 We can evaluate this is using a P-value surface:
 
-  - at each point  $\mathbf{x}$, estimatehow likely it is to have a relative risk similar to or larger than our observed risk $\log\hat\rho(\mathbf{x})$, if there was no additional risk in the population, $\log\rho(\mathbf{x})=0$.
+  - at each point  $\mathbf{x}$, estimate how likely it is to have a relative risk similar to or larger than our observed risk $\log\hat\rho(\mathbf{x})$, if there was no additional risk in the population, $\log\rho(\mathbf{x})=0$.
 
 The `tolerance` function in `sparr` is used for this:
 
@@ -592,7 +592,7 @@ mod.controls <- ppm(cases ~ log(controls.im))
 mod.controls
 ```
 
-As expected, population density is important for describing where cases of cancer will be!
+As expected, population density is important for describing where cases of disease will be!
 
 ---
 

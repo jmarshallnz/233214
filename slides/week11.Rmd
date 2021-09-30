@@ -532,9 +532,7 @@ Until now our estimation of the density of point patterns has been non-parametri
 or intensity of the point process.
 
 An alternative is modelling the underlying intensity of the process $\lambda(\mathbf{x})$ using
-a parametric statistical model.
-
-This model might depend on the location $\mathbf{x}$ or on other covariates.
+a parametric statistical model. This model might depend on the location $\mathbf{x}$ or on other covariates.
 
 Essentially we assume the points arise due to a Poisson process with intensity $\lambda(\mathbf{x})$. i.e. the number of points expected in an area $A$ is given by
 $$
@@ -542,7 +540,9 @@ n_A \sim \mathsf{Poisson(\Lambda_A)}
 $$
 where $\Lambda_A = \int_A \lambda(\mathbf{x}) d\mathbf{x}$.
 
-The `ppm` function from `spatstat` can fit these models.
+Note that we assume no interaction between the locations. **This is not suitable for an infectious disease!**
+
+The `ppm` function from `spatstat` can fit these models, along with fancier models with location interactions.
 
 ---
 

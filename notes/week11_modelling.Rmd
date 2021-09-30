@@ -16,6 +16,8 @@ where $\beta_i$ are parameters to be estimated.
 
 This is essentially a parametric model of an inhomogeneous Poisson process whose intensity is conditional on a set of spatial covariates.
 
+Note that Poisson processes assume that there is no interaction between locations: **These models are not appropriate for modelling an infectious disease where locations will cluster around each other.**
+
 We can model this sort of point pattern, and many more, using the `ppm` function in `spatstat` [@spatstat].
 
 ```{r, include=FALSE}

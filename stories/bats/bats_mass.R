@@ -7,7 +7,9 @@ library(gstat)
 
 if (0) {
   ### Path to covariates
-  base_path <- "../winTor_aux/data/"
+  library(sp)
+  library(raster)
+  base_path <- "~/projects/winTor_aux/data/"
   ## Co-variates
   env.names <- c("NA_dem", "NA_northing", "NA_nFrostyDays",
                  "NA_nonGrowingDays", "NA_nDaysFreeze", "NA_OG1k")
@@ -16,7 +18,7 @@ if (0) {
   env.stk
   test <- aggregate(env.stk, fact=100)
   ## ammending to have co-variate data
-  mass <- read.csv("data/massDataReferenced.csv")
+  mass <- read.csv("~/projects/bats_wintor/data/massDataReferenced.csv")
   coordinates(mass) <- ~ Long + Lat
   proj4string(mass) <- proj4string(env.stk)
   mass@data <- as.data.frame(cbind(mass, raster::extract(env.stk, mass)))
@@ -50,8 +52,20 @@ if (0) {
   library(sf)
   # remove the 14.5 value
   mass_sf <- st_as_sf(mass)
-  fs::file_delete("data/bat_mass.csv")
-  write_sf(mass_sf %>% filter(avgMass != 14.5), "data/bat_mass.csv")
+  fs::file_delete("stories/bats/data/bats.csv")
+  mass_sf %>% filter(avgMass != 14.5) %>%
+    dplyr::select(mass = avgMass,
+           elevation = NA_dem,
+           northing = NA_northing,
+           frost_days = NA_nFrostyDays,
+           freeze_days = NA_nDaysFreeze,
+           growing_days = NA_nonGrowingDays,
+           geometry) %>%
+    mutate(growing_days = 365 - growing_days) %>%
+    mutate(long = st_coordinates(.)[,1],
+           lat = st_coordinates(.)[,2]) %>%
+    st_set_geometry(NULL) %>%
+    write_csv("stories/bats/data/bats.csv")
 
   # Can we downsample our raster images?
 
@@ -84,22 +98,22 @@ NA_info <- read_sf("stories/bats/data/NA_info.sqlite")
 NA_boundary <- read_sf("stories/bats/data/NA_boundary.sqlite")
 
 # Read in MASS data
-mass.csv = read_csv("stories/bats/data/bat_mass.csv")
-mass = st_as_sf(mass.csv, coords=c("Long","Lat"), crs=st_crs(NA_info))
+bats.csv = read_csv("stories/bats/data/bats.csv")
+bats = st_as_sf(bats.csv, coords=c("long","lat"), crs=st_crs(NA_info))
 
 proj4_map <- "+proj=lcc +lat_0=0 +lon_0=-95 +lat_1=49 +lat_2=77 +datum=WGS84 +units=m"
 
 # plot our area
 ggplot() +
   geom_sf(data=NA_boundary) +
-  geom_sf(data=mass, aes(size=avgMass), shape=21) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map)
 
 # NICE! Now we are getting somewhere.
 ggplot() +
   geom_sf(data=NA_info, aes(fill=elevation), lwd=0) +
   geom_sf(data=NA_boundary, fill=NA) +
-  geom_sf(data=mass, aes(size=avgMass), shape=21) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map)
 
 # OK, now let's try the kriging bullshit
@@ -115,25 +129,26 @@ NA_points <- NA_info %>%
          GEOMETRY = st_centroid(tile))
 
 st_crs(NA_points)
-st_crs(mass)
+st_crs(bats)
 
 # We'll start with inverse distance weighting
-mass.idw <- idw(avgMass ~ 1, locations=mass, newdata=NA_points)
+mass.idw <- idw(mass ~ 1, locations=bats, newdata=NA_points)
 
 # Join back to our NA_points data so we get the tile column for plotting
 NA.idw <- mass.idw %>%
+  rename(mass = var1.pred) %>%
   st_join(NA_points)
 
 # Plot
 ggplot() +
   geom_sf(data=NA_boundary, fill=NA) +
-  geom_sf(data=NA.idw, aes(geometry=tile, fill=var1.pred), col=NA) +
-  geom_sf(data=mass, aes(size=avgMass), shape=21) +
+  geom_sf(data=NA.idw, aes(geometry=tile, fill=mass), col=NA) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map) +
   scale_fill_viridis_c()
 
 # The alternate is kriging: we fit a model to the variogram (spatial variation)
-const.vgm <- variogram(avgMass ~ 1, data=mass, cutoff=5000)
+const.vgm <- variogram(mass ~ 1, data=bats, cutoff=5000)
 const.mod <- fit.variogram(const.vgm, model=vgm(1, "Exp", 3000, 1))
 plot(const.vgm, const.mod)
 
@@ -142,71 +157,62 @@ plot(const.vgm, const.mod)
 # This isn't the best fit - we don't have huge numbers of points to play with
 # but let's run with it.
 
-kout <- krige(avgMass ~ 1, locations=mass, newdata=NA_points, model=const.mod)
-kout <- kout %>% st_join(NA_points)
+kout <- krige(mass ~ 1, locations=bats, newdata=NA_points, model=const.mod)
+kout <- kout %>% rename(mass = var1.pred,
+                        variance = var1.var) %>%
+                        st_join(NA_points)
 
 ggplot() +
-  geom_sf(data=kout, aes(geometry=tile, fill=var1.pred), col=NA) +
+  geom_sf(data=kout, aes(geometry=tile, fill=mass), col=NA) +
   geom_sf(data=NA_boundary, fill=NA) +
-  geom_sf(data=mass, aes(size=avgMass), shape=21) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map) +
   scale_fill_viridis_c()
 
-# OK, how about modelling?
-covar.vgm <- variogram(avgMass ~ NA_northing + NA_nDaysFreeze, locations=mass, cutoff=5000)
-covar.mod <- fit.variogram(covar.vgm, model=vgm(1, "Exp", 3000, 1))
-plot(covar.vgm, covar.mod)
-
-kout <- krige(avgMass ~ NA_northing + NA_nDaysFreeze, locations=mass, newdata=NA_points, model=covar.mod)
-kout <- kout %>% st_join(NA_points)
-
-ggplot() +
-  geom_sf(data=kout, aes(geometry=tile, fill=var1.pred), col=NA) +
-  geom_sf(data=countries, fill=NA) +
-  geom_sf(data=mass_sf, aes(size=avgMass), shape=21) +
-  coord_sf(crs = proj4_map) +
-  scale_fill_viridis_c()
-
+# OK, how about modelling? We could try by fitting a normal linear model:
 
 # Example linear model for trend:
-mod <- lm(avgMass ~ NA_northing + NA_nDaysFreeze, data=mass_sf)
+mod <- lm(mass ~ northing + freeze_days, data=bats)
 mod %>% summary()
 
-fit <- mod %>% broom::augment(newdata=mass_sf) %>%
+fit <- mod %>% broom::augment(bats) %>%
   st_as_sf()
 
 # What we notice is spatial clustering of similar colours.
 # This isn't really what we want.
 ggplot() +
-  geom_sf(data=countries, fill=NA) +
+  geom_sf(data=NA_boundary, fill=NA) +
   geom_sf(data=fit, aes(col=.resid))
 
-# We could try and fit a variogram to the underlying data.
-# and then to the data with various covariates
-mass_vgm <- variogram(avgMass ~ NA_northing + NA_nDaysFreeze, mass_sf)
-mass_mod <- fit.variogram(mass_vgm, model=vgm(1, "Exp", 1000, 1))
-plot(mass_vgm, mass_mod)
+# So let's do kriging using this model - the spatial interpolation will be
+# done after de-trending using the model
+covar.vgm <- variogram(mass ~ northing + freeze_days, locations=bats, cutoff=5000)
+covar.mod <- fit.variogram(covar.vgm, model=vgm(1, "Exp", 3000, 1))
+plot(covar.vgm, covar.mod)
 
-# This isn't the best fit - we don't have huge numbers of points to play with
-# but let's run with it.
+kout <- krige(mass ~ northing + freeze_days, locations=bats, newdata=NA_points, model=covar.mod)
+kout <- kout %>% rename(mass = var1.pred,
+                        variance = var1.var) %>%
+  st_join(NA_points)
 
-kout <- krige(avgMass ~ NA_northing + NA_nDaysFreeze, mass_sf, newdata=test2, model=mass_mod)
-kout <- kout %>% st_join(test2)
-
+# This looks better:
 ggplot() +
-  geom_sf(data=kout, aes(geometry=tile, fill=var1.pred), col=NA) +
-  geom_sf(data=countries, fill=NA) +
-  geom_sf(data=mass_sf, aes(size=avgMass), shape=21) +
+  geom_sf(data=kout, aes(geometry=tile, fill=mass), col=NA) +
+  geom_sf(data=NA_boundary, fill=NA) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map) +
   scale_fill_viridis_c()
 
-# uncertainty
+# We also have our uncertainty surface:
 ggplot() +
-  geom_sf(data=kout, aes(geometry=tile, fill=var1.var), col=NA) +
-  geom_sf(data=countries, fill=NA) +
-  geom_sf(data=mass_sf, aes(size=avgMass), shape=21) +
+  geom_sf(data=kout, aes(geometry=tile, fill=variance), col=NA) +
+  geom_sf(data=NA_boundary, fill=NA) +
+  geom_sf(data=bats, aes(size=mass), shape=21) +
   coord_sf(crs = proj4_map) +
   scale_fill_viridis_c()
+
+
+#### OLD STUFF BELOW HERE...
 
 # Ok, this is sort-of working!
 

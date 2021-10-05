@@ -23,13 +23,13 @@ theme_set(theme_void())
 
 ## Introduction
 
-Spatial interpolation is the process of taking measurement information from a set of points and extending or interpolating that measurement across a spatial region.
+With [inverse distance weighting](week12_idw.html) and [simple kriging](week12_simple_kriging.html), we assumed that the underlying spatial trend was essentially constant, or at least wasn't determined by external information.
 
-The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+This is generally a good thing to do when you have no strong external measures giving rise to the measure being sampled.
 
-So when we model the measurement spatially, we need to account for that correlation.
+However, in many situations the underlying spatial trend may be known to have a direction (e.g. it increases as $x$ or $y$ increases) or may be known to correlate with some other measure, and we have that other measure available to us at both the sampled locations and unobserved locations where we which to interpolate.
 
-There are a wide range of methods for spatial interpolation, and we'll cover [inverse distance weighting](week12_idw.html), [simple kriging](week12_simple_kriging.html) and universal kriging.
+In this case, we can model the spatial trend in the outcome measure of interest using this covariate information at the sampled locations, and then predict the spatial trend to unobserved locations. The left-overs or residuals from this trend can then be kriged with [simple kriging](week12_simple_kriging.html) so that the resulting predictions incorporate the spatial correlation.
 
 As an example dataset, we'll be using a famous dataset of heavy metal concentrations in topsoil in a flood plain of the river Meuse near the village of Stein in the Netherlands. It is available within the `sp` package and you can find more details about it using `?meuse`. We'll be concentrating on the metal `zinc`, and look at it on a log scale:
 

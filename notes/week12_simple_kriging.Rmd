@@ -23,13 +23,11 @@ theme_set(theme_void())
 
 ## Introduction
 
-Spatial interpolation is the process of taking measurement information from a set of points and extending or interpolating that measurement across a spatial region.
+With [inverse distance weighting](week12_idw.html) we interpolated to new, unobserved locations by using a weighted average of the values at sampled locations, with the weights inversely proportional to the distance to the sampled locations, raised to some power.
 
-The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+This means the amount of influence that points at a distance $d$ from our unobserved location have is the same, regardless of the distribution of points across the region. Essentially it means that there is a common, global amount of smoothing being applied: the weights for a distance $d$ are the same regardless of where we are interpolating.
 
-So when we model the measurement spatially, we need to account for that correlation.
-
-There are a wide range of methods for spatial interpolation, and we'll cover [inverse distance weighting](week12_idw.html), simple kriging and [universal kriging](week12_universal_kriging.html).
+An alternate approach is to allow the amount of smoothing to adapt to changes in the intensity of sampled points as well as changes in the values measured at those points. Essentially we utilise the covariance between the interpoint distances and the interpoint values to tune the weights to what is happening locally around the unobserved point: weights for a distance $d$ will differ depending on where we are interpolating.
 
 As an example dataset, we'll be using a famous dataset of heavy metal concentrations in topsoil in a flood plain of the river Meuse near the village of Stein in the Netherlands. It is available within the `sp` package and you can find more details about it using `?meuse`. We'll be concentrating on the metal `zinc`, and look at it on a log scale:
 

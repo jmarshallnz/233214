@@ -4,8 +4,6 @@ date: "Week 11"
 output: html_document
 ---
 
-## Introduction
-
 This week we will continue working with point patterns, and will look at:
 
   - [Adaptive kernel density estimation](../notes/week11_adaptive_kde.html) where we allow the bandwidth to vary across the region.

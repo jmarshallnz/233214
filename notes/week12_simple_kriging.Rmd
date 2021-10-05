@@ -88,7 +88,7 @@ This can be done using the `variogram` function:
 const.var <- variogram(log(zinc) ~ 1, data=meuse.sf)
 ```
 
-We then fit a **variogram model** to this. There's a whole heap of variogram models available:
+We then fit a **variogram model** $\gamma(d)$ to this. There's a whole heap of variogram models available:
 
 ```{r}
 all <- show.vgms(plot=FALSE) %>% rename(gamma=semivariance)
@@ -98,7 +98,7 @@ ggplot(data=all) +
   theme_minimal()
 ```
 
-We usually pick one of these models, then control it's fit to the data by modifying three main parameters: the **nugget**, the **partial sill** and the **range**. The nugget is the y-intercept (the value of $\gamma$) when distance = 0), while the range and partial sill are the point (x and y respectively) where the variogram starts flattening out.
+We usually pick one of these models, then control it's fit to the data by modifying three main parameters: the **nugget**, the **partial sill** and the **range**. The nugget is the y-intercept (i.e. $\gamma(0)$), while the range and partial sill are the point (x and y respectively) where the variogram starts flattening out.
 
 This fitting is done in the `fit.variogram` function. Here we use the spherical variogram model, and we give it a guess at the partial sill (0.6), the range (1000) and the nugget (0.1). It then optimises these parameters from there and gives:
 
@@ -119,15 +119,18 @@ ggplot(data=variogramLine(const.mod, maxdist=max(const.var$dist)),
 
 Now that we have a model for how pairs of points will be correlated, we can now do the interpolation. Essentially we use the variogram model to provide localised weighting parameters.
 
-Recall that with [inverse distance weighting](week12_idw.html) the interpolated value at an unsampled site was determined by the weighted average of neighbouring points where the weighting parameter (the power $d$ in the formula) was the same across the entire study extent. Kriging uses the variogram model to compute the weights of neighboring points based on the distribution of those values, so it allows the local pattern of points in the neighbourhood of the unsampled point to define the weights. The weights $\mathbf{w} = [w_1, w_2, \ldots w_n]$ are determined using
+Recall that with [inverse distance weighting](week12_idw.html) the interpolated value at an unsampled site was determined by the weighted average of neighbouring points where the weighting parameter (the power $p$ in the formula) was the same across the entire study extent. Kriging uses the variogram model to compute the weights of neighboring points based on the distribution of those values, so it allows the local pattern of points in the neighbourhood of the unsampled point to define the weights. The weights $w_1, w_2, \ldots, w_n$ are determined by solving the system of $n+1$ linear equations
 $$
-\mathbf{w} = \Gamma^{-1} \mathbf{\gamma_x}
+\begin{aligned}
+\sum_j w_j \gamma(\lVert\mathbf{x}_i - \mathbf{x}_j\rVert) + \mu &= \gamma(\lVert\mathbf{x}_i - \mathbf{x}\rVert)\quad i = 1,\ldots,n,\\
+\sum_j w_j &= 1.
+\end{aligned}
 $$
-where $\Gamma = \gamma(D)$ is a matrix produced by applying the variogram model $\gamma$ to the pair-wise distance matrix $D$ of the sampled locations, and $\mathbf{\gamma_x} = \gamma(\lVert\mathbf{x} - \mathbf{x}_i\rVert)$ is the vector produced by applying the variogram function to the vector of distances from each sampled location to the unsampled location we are interpolating to.
+where $\gamma$ is the variogram function, $w_j$ are the weights, $\mathbf{x}$ is the unobserved location for which we want to interpolate, $\mathbf{x}_i$ are our sampled locations, and $\mu$ is an additional constant (a [Lagrange multiplier](https://en.wikipedia.org/wiki/Lagrange_multiplier)) that contributes to the variance (uncertainty) of the kriging estimate.
 
-Once we have the weights $\mathbf{w}$, we then compute the interpolated measure $\hat{Z}$ using the same equation as was used for [IDW](week12_idw.html):
+Once we have the weights $w_j$, we then compute the interpolated measure $\hat{Z}$ using the same equation as was used for [IDW](week12_idw.html):
 $$
-\hat{Z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
+\hat{Z} = \frac{\sum_{j=1}^n w_jz_j}{\sum_{j=1}^n w_j}
 $$
 We do this in R with the `krige` function:
 

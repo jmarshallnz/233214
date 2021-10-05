@@ -1,0 +1,104 @@
+---
+title: "Inverse distance weighted spatial interpolation"
+date: "Week 12"
+output: html_document
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sp)
+library(gstat)
+library(sf)
+library(patchwork)
+
+data(meuse.riv)
+river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
+  filter(y < 334500 & y > 329500) %>%
+  as.matrix() %>% st_linestring()
+
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, fig.align='center')
+theme_set(theme_void())
+```
+
+## Introduction
+
+Spatial interpolation is the process of taking measurement information from a set of points and extending or interpolating that measurement across a spatial region.
+
+The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+
+So when we model the measurement spatially, we need to account for that correlation.
+
+There are a wide range of methods for spatial interpolation, and we'll cover inverse distance weighting, [simple kriging](week12_simple_kriging.html) and [universal kriging](week12_universal_kriging.html).
+
+As an example dataset, we'll be using a famous dataset of heavy metal concentrations in topsoil in a flood plain of the river Meuse near the village of Stein in the Netherlands. It is available within the `sp` package and you can find more details about it using `?meuse`. We'll be concentrating on the metal `zinc`, and look at it on a log scale:
+
+```{r}
+data(meuse)
+meuse.sf <- st_as_sf(meuse, coords = c('x', 'y'))
+
+ggplot(meuse.sf) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(fill=log(zinc)), shape=21) +
+  scale_fill_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+The goal will be to interpolate this measure so we can estimate the concentration of zinc across the entire flood plain. To do this we'll make use of a grid for interpolation:
+
+```{r}
+data(meuse.grid)
+meuse.grid.sf <- st_as_sf(meuse.grid, coords = c('x', 'y'))
+
+ggplot(meuse.grid.sf) +
+  geom_sf(data=river) +
+  geom_sf(size=1, shape=21)
+```
+
+## Inverse distance weighting
+
+With inverse distance weighting, we estimate the measurement at an unsampled location using values from nearby locations, weighted in proportion to the proximity of the sampled points to the unsampled location.
+
+Given measurements $z_i$ at location $\mathbf{x}_i$ for $i=1, \ldots n$, we estimate the value $\hat{Z}$ at a new point $\mathbf{x}$ using:
+
+$$
+\hat{Z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
+$$
+where the weights $w_i$ are given by
+$$
+w_i = \frac{1}{\lVert \mathbf{x} - \mathbf{x}_i\rVert^d}
+$$
+
+where $d$ is the inverse distance power, which we have freedom to vary. The weights are thus the inverse distance between the new point $\mathbf{x}$ and our sampled points $\mathbf{x}_i$: sampled points that are close will have a smaller distance and thus a larger weight.
+
+The inverse distance power $d$ controls how strongly neighbouring points have priority over points far away. If $d$ is small (e.g. $d < 1$) then points far away can have influence on the estimated measure, whereas if $d$ is larger (e.g. $d > 2$) then points further away have very little influence on the estimated measure.
+
+A typical value is $d=2$ but this can be experimented with. We can do the estimation with the `idw` function from `gstat` which can take either an `sf` object (from `sf`) or a `Spatial` object (from `sp`). We then supply the variable we want and the new data locations we want to interpolate to, along with the power to use:
+
+```{r, echo=TRUE, eval=FALSE}
+meuse.idw <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 2)
+```
+
+The `idw` then gives us a new object containing the predictions in the `var1.pred` column, which we can then map:
+
+```{r}
+meuse.idw <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 2, debug.level=0)
+ggplot(meuse.idw) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+
+```
+
+Using a smaller value of `idp` will result in more weight applied to observations further away, which will thus downweight the closer observations:
+
+```{r, echo=TRUE, eval=FALSE}
+meuse.idw.1 <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 1)
+```
+
+```{r}
+meuse.idw.1 <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 1, debug.level=0)
+ggplot(meuse.idw.1) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```

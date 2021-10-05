@@ -1,0 +1,166 @@
+---
+title: "Universal Kriging for spatial interpolation"
+date: "Week 12"
+output: html_document
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sp)
+library(gstat)
+library(sf)
+library(patchwork)
+
+data(meuse.riv)
+river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
+  filter(y < 334500 & y > 329500) %>%
+  as.matrix() %>% st_linestring()
+
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, fig.align='center')
+theme_set(theme_void())
+```
+
+## Introduction
+
+Spatial interpolation is the process of taking measurement information from a set of points and extending or interpolating that measurement across a spatial region.
+
+The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+
+So when we model the measurement spatially, we need to account for that correlation.
+
+There are a wide range of methods for spatial interpolation, and we'll cover [inverse distance weighting](week12_idw.html), [simple kriging](week12_simple_kriging.html) and universal kriging.
+
+As an example dataset, we'll be using a famous dataset of heavy metal concentrations in topsoil in a flood plain of the river Meuse near the village of Stein in the Netherlands. It is available within the `sp` package and you can find more details about it using `?meuse`. We'll be concentrating on the metal `zinc`, and look at it on a log scale:
+
+```{r}
+data(meuse)
+meuse.sf <- st_as_sf(meuse, coords = c('x', 'y'))
+
+ggplot(meuse.sf) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(fill=log(zinc)), shape=21) +
+  scale_fill_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+The goal will be to interpolate this measure so we can estimate the concentration of zinc across the entire flood plain. To do this we'll make use of a grid for interpolation:
+
+```{r}
+data(meuse.grid)
+meuse.grid.sf <- st_as_sf(meuse.grid, coords = c('x', 'y'))
+
+ggplot(meuse.grid.sf) +
+  geom_sf(data=river) +
+  geom_sf(size=1, shape=21)
+```
+
+## Universal Kriging
+
+Universal Kriging is used where we have some covariate information that can be used to predict the spatial trend. The process is then:
+
+1. We estimate a spatial trend using a standard statistical model (e.g. model the average spatial trend in terms of it's location (x and y) or some covariates).
+2. We then subtract the trend from the observations to give residual measures. This should have no trend.
+3. We use [simple kriging](week12_simple_kriging.html) to interpolate the residuals.
+4. We add the simple kriging interpolation onto the predictions from the trend model.
+
+We notice that zinc concentrations are highest closest to the river, and we have that as a covariate both at our sampled and unsampled locations. Thus, we could use distance to the river to model the spatial trend. Plotting log zinc concentrations versus distance gives:
+
+```{r}
+ggplot(meuse.sf) +
+  geom_point(mapping=aes(x=dist, y=log(zinc))) +
+  theme_minimal()
+```
+
+and we can linearise this relationship by using the square root of distance instead, allowing us to fit a standard linear regression:
+
+```{r}
+mod <- lm(log(zinc) ~ sqrt(dist), data=meuse.sf)
+ggplot(meuse.sf, mapping=aes(x=sqrt(dist), y=log(zinc))) +
+  geom_point() +
+  geom_smooth(method = 'lm', se=FALSE) +
+  theme_minimal()
+```
+
+This gives an equation relating log zinc concentration to distance from the river,
+
+$$
+\log(zinc) = 7 - 2.55 \sqrt{dist}
+$$
+
+that we can use to predict the log zinc concentration across the flood plain:
+
+```{r}
+pred.sf <- broom::augment(mod, newdata=meuse.grid.sf, se_fit=TRUE) %>% st_as_sf()
+ggplot(pred.sf) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=.fitted), size=1) +
+  labs(col = "log(zinc)") +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+We can then subtract the predicted log zinc concentration, given the distance to the river from the observed log zinc concentrations and produce a map of the residuals (observed minus predicted):
+
+```{r}
+fit <- broom::augment(mod, meuse.sf) %>% st_as_sf()
+ggplot(fit) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(fill=.resid), shape=21) +
+  scale_fill_distiller(type='div', palette="PuOr", limits=c(-1.6,1.6))
+```
+
+We then perform simple kriging on this, by fitting a variogram:
+
+```{r}
+resid.var <- variogram(.resid ~ 1, data=fit)
+resid.mod <- fit.variogram(resid.var, model=vgm(0.2, "Sph", 800, 0.05))
+ggplot(data=variogramLine(resid.mod, maxdist=max(resid.var$dist)),
+       mapping=aes(x=dist, y=gamma)) +
+  geom_line() +
+  geom_point(data=resid.var) +
+  theme_minimal()
+```
+
+and then kriging to interpolate the 'residual' component across the region:
+
+```{r}
+krig.resid <- krige(.resid ~ 1, fit, meuse.grid.sf, model=resid.mod, debug.level=0)
+ggplot(krig.resid) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  labs(col="residual") +
+  scale_colour_distiller(type='div', palette="PuOr", limits=c(-0.7,0.7))
+```
+
+Combining this with the prediction from the linear regression we get our final predictions:
+
+```{r}
+final <-
+  pred.sf %>% st_join(krig.resid) %>% mutate(final = .fitted + var1.pred,
+                                             se = var1.var + .se.fit^2)
+
+ggplot(final) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=final), size=1) +
+  labs(col = "log(zinc)") +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+We can then combine the uncertainties from the kriging process and from the linear model predictions to give an uncertainty surface for our predictions:
+
+```{r}
+ggplot(final) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=se), size=1) +
+  labs(col = "uncertainty") +
+  scale_color_distiller(palette="YlOrBr")
+```
+
+We notice that the variance in our predictions has now reduced significantly compared to the prediction done using [simple kriging](week12_simple_kriging.html).
+
+In practice using R, we add a spatial trend in the kriging process we change the formula in the `variogram` and `krige` functions:
+
+```{r, echo=TRUE, eval=FALSE}
+dist.var <- variogram(log(zinc) ~ sqrt(dist), locations=meuse.sf)
+dist.mod <- fit.variogram(dist.var, model=vgm(0.2, "Sph", 800, 0.05))
+krig.dist <- krige(log(zinc) ~ sqrt(dist), meuse.sf, meuse.grid.sf, model=dist.mod)
+```

@@ -4,12 +4,18 @@ date: "Week 12"
 output: html_document
 ---
 
-This week we will continue working with point patterns, concentrating now on [Spatial interpolation](../notes/week12_interpolation.html).
+This week we will continue working with point patterns, concentrating now on spatial interpolation with three related techniques:
 
-**There is no work to hand in as part of your portfolio this week.**
+ - [Inverse distance weighted interpolation](../notes/week12_idw.html).
+ 
+ - [Simple Kriging](../notes/week12_simple_kriging.html).
+ 
+ - [Universal Kriging](../notes/week12_universal_kriging.html).
 
 You should utilise the material in the notes above and then work through the workshop sheet below (Right click -> Save link as, and load into RStudio):
 
 [week12_workshop.Rmd](week12_workshop.Rmd)
+
+**There is no work to hand in as part of your portfolio this week.**
 
 Any questions, please contact Jonathan M

@@ -1,0 +1,314 @@
+---
+title: "Spatial interpolation"
+date: "Week 12"
+output: html_document
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sp)
+library(gstat)
+library(sf)
+library(patchwork)
+
+data(meuse.riv)
+river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
+  filter(y < 334500 & y > 329500) %>%
+  as.matrix() %>% st_linestring()
+
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, fig.align='center')
+theme_set(theme_void())
+```
+
+Spatial interpolation is the process of taking measurement information from a set of points and extending or interpolating that measurement across a spatial region.
+
+The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+
+So when we model the measurement spatially, we need to account for that correlation.
+
+There are a wide range of methods for spatial interpolation, but we'll be looking at just two of them: Inverse distance weighting and Kriging.
+
+As an example dataset, we'll be using a famous dataset of heavy metal concentrations in topsoil in a flood plain of the river Meuse near the village of Stein in the Netherlands. It is available within the `sp` package and you can find more details about it using `?meuse`. We'll be concentrating on the metal `zinc`, and look at it on a log scale:
+
+```{r}
+data(meuse)
+meuse.sf <- st_as_sf(meuse, coords = c('x', 'y'))
+
+ggplot(meuse.sf) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(fill=log(zinc)), shape=21) +
+  scale_fill_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+The goal will be to interpolate this measure so we can estimate the concentration of zinc across the entire flood plain. To do this we'll make use of a grid for interpolation:
+
+```{r}
+data(meuse.grid)
+meuse.grid.sf <- st_as_sf(meuse.grid, coords = c('x', 'y'))
+
+ggplot(meuse.grid.sf) +
+  geom_sf(data=river) +
+  geom_sf(size=1, shape=21)
+```
+
+## Inverse distance weighting
+
+With inverse distance weighting, we estimate the measurement at an unsampled location using values from nearby locations, weighted in proportion to the proximity of the sampled points to the unsampled location.
+
+Given measurements $z_i$ at location $\mathbf{x}_i$ for $i=1, \ldots n$, we estimate the value $\hat{Z}$ at a new point $\mathbf{x}$ using:
+
+$$
+\hat{Z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
+$$
+where the weights $w_i$ are given by
+$$
+w_i = \frac{1}{\lVert \mathbf{x} - \mathbf{x}_i\rVert^d}
+$$
+
+where $d$ is the inverse distance power, which we have freedom to vary. The weights are thus the inverse distance between the new point $\mathbf{x}$ and our sampled points $\mathbf{x}_i$: sampled points that are close will have a smaller distance and thus a larger weight.
+
+The inverse distance power $d$ controls how strongly neighbouring points have priority over points far away. If $d$ is small (e.g. $d < 1$) then points far away can have influence on the estimated measure, whereas if $d$ is larger (e.g. $d > 2$) then points further away have very little influence on the estimated measure.
+
+A typical value is $d=2$ but this can be experimented with. We can do the estimation with the `idw` function from `gstat` which can take either an `sf` object (from `sf`) or a `Spatial` object (from `sp`). We then supply the variable we want and the new data locations we want to interpolate to, along with the power to use:
+
+```{r, echo=TRUE, eval=FALSE}
+meuse.idw <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 2)
+```
+
+The `idw` then gives us a new object containing the predictions in the `var1.pred` column, which we can then map:
+
+```{r}
+meuse.idw <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 2, debug.level=0)
+ggplot(meuse.idw) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+
+```
+
+Using a smaller value of `idp` will result in more weight applied to observations further away, which will thus downweight the closer observations:
+
+```{r, echo=TRUE, eval=FALSE}
+meuse.idw.1 <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 1)
+```
+
+```{r}
+meuse.idw.1 <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 1, debug.level=0)
+ggplot(meuse.idw.1) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+## Simple Kriging
+
+An alternate, and perhaps more statistical way of performing interpolation is to use a statistical model to define how pairs of measurements are expected to be related, given how far they are apart. We do this by creating a **variogram** which takes half the squared difference in the measure $z$ between pairs of observations $i$, $j$:
+$$
+\gamma_{ij} = \frac{1}{2}(z_i - z_j)^2
+$$
+and plots this against the distance $d_{ij}$ between observations $i$ and $j$, for all pairs of observations up to some given distance (e.g. up to say 1/3 of the area covered by the points).
+
+```{r}
+d <- st_distance(meuse.sf)
+gamma <- dist(log(meuse.sf$zinc)) %>% as.matrix()
+gamma_vs_d <- data.frame(gamma = as.numeric(gamma)/2, dist = as.numeric(d)) %>%
+  filter(dist < 1500)
+ggplot(gamma_vs_d) +
+  geom_point(aes(x=dist, y=gamma), alpha=0.3) +
+  theme_minimal()
+```
+
+This is a bit overwhelming to interpret, so we typically divide the distance into bands and then estimate the average $\gamma$ within each band:
+
+```{r}
+bands <- gamma_vs_d %>% mutate(band = cut(dist, breaks=15)) %>%
+  group_by(band) %>% summarise(dist=mean(dist), gamma=mean(gamma))
+
+ggplot(gamma_vs_d) +
+  geom_point(aes(x=dist, y=gamma), alpha=0.1) +
+  geom_point(data=bands, mapping=aes(x=dist, y=gamma), size=4, col='dark red') +
+  theme_minimal()
+```
+
+This can be done using the `variogram` function:
+
+```{r, echo=TRUE}
+const.var <- variogram(log(zinc) ~ 1, data=meuse.sf)
+```
+
+We then fit a **variogram model** to this. There's a whole heap of variogram models available:
+
+```{r}
+all <- show.vgms(plot=FALSE) %>% rename(gamma=semivariance)
+ggplot(data=all) +
+  geom_line(mapping=aes(x=distance, y=gamma)) +
+  facet_wrap(vars(model)) +
+  theme_minimal()
+```
+
+We usually pick one of these models, then control it's fit to the data by modifying three main parameters: the **nugget**, the **partial sill** and the **range**. The nugget is the y-intercept (the value of $\gamma$) when distance = 0), while the range and partial sill are the point (x and y respectively) where the variogram starts flattening out.
+
+This fitting is done in the `fit.variogram` function. Here we use the spherical variogram model, and we give it a guess at the partial sill (0.6), the range (1000) and the nugget (0.1). It then optimises these parameters from there and gives:
+
+```{r, echo=TRUE}
+const.mod <- fit.variogram(const.var, model=vgm(0.6, "Sph", 1000, 0.1))
+const.mod
+```
+
+We were pretty close with our guesses. We can plot the result on top of our data variogram:
+
+```{r}
+ggplot(data=variogramLine(const.mod, maxdist=max(const.var$dist)),
+       mapping=aes(x=dist, y=gamma)) +
+  geom_line() +
+  geom_point(data=const.var) +
+  theme_minimal()
+```
+
+Now that we have a model for how pairs of points will be correlated, we can now do the interpolation. Essentially we use the variogram model to provide localised weighting parameters.
+
+Recall that with inverse distance weighting the interpolated value at an unsampled site was determined by the weighted average of neighbouring points where the weighting parameter (the power $d$ in the formula) was the same across the entire study extent. Kriging uses the variogram model to compute the weights of neighboring points based on the distribution of those values, so it allows the local pattern of points in the neighbourhood of the unsampled point to define the weights. The weights $\mathbf{w} = [w_1, w_2, \ldots w_n]$ are determined using
+$$
+\mathbf{w} = \Gamma^{-1} \mathbf{\gamma_x}
+$$
+where $\Gamma = \gamma(D)$ is a matrix produced by applying the variogram model $\gamma$ to the pair-wise distance matrix $D$ of the sampled locations, and $\mathbf{\gamma_x} = \gamma(\lVert\mathbf{x} - \mathbf{x}_i\rVert)$ is the vector produced by applying the variogram function to the vector of distances from each sampled location to the unsampled location we are interpolating to.
+
+Once we have the weights $\mathbf{w}$, we then compute the interpolated measure $\hat{Z}$ using the same equation as was used for IDW:
+$$
+\hat{Z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
+$$
+We do this in R with the `krige` function:
+
+```{r, echo=TRUE, eval=FALSE}
+krig.const <- krige(log(zinc) ~ 1, meuse.sf, meuse.grid.sf, model=const.mod)
+```
+
+which gives us an `sf` object with the same columns (`var1.pred` and `var1.var`) as the `idw` function did. The difference is that `var1.var` is now useful as a measure of uncertainty. You should see low uncertainty where we have observations, and higher uncertainty where we don't.
+
+```{r}
+krig.const <- krige(log(zinc) ~ 1, meuse.sf, meuse.grid.sf, model=const.mod,
+                    debug.level = 0)
+g1 <- ggplot(krig.const) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=0.7) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6)) +
+  labs(col="log(zinc)")
+g2 <- ggplot(krig.const) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.var), size=0.7) +
+  scale_color_distiller(palette="YlOrBr") +
+  labs(col="uncertainty")
+g1 + plot_spacer() + g2 + plot_layout(widths=c(1,0.1,1))
+```
+
+## Universal Kriging
+
+Universal Kriging is used where we have some covariate information that can be used to predict the spatial trend. The process is then:
+
+1. We estimate a spatial trend using a standard statistical model (e.g. model the average spatial trend in terms of it's location (x and y) or some covariates).
+2. We then subtract the trend from the observations to give residual measures. This should have no trend.
+3. We use simple kriging to interpolate the residuals.
+4. We add the simple kriging interpolation onto the predictions from the trend model.
+
+We notice that zinc concentrations are highest closest to the river, and we have that as a covariate both at our sampled and unsampled locations. Thus, we could use distance to the river to model the spatial trend. Plotting log zinc concentrations versus distance gives:
+
+```{r}
+ggplot(meuse.sf) +
+  geom_point(mapping=aes(x=dist, y=log(zinc))) +
+  theme_minimal()
+```
+
+and we can linearise this relationship by using the square root of distance instead, allowing us to fit a standard linear regression:
+
+```{r}
+mod <- lm(log(zinc) ~ sqrt(dist), data=meuse.sf)
+ggplot(meuse.sf, mapping=aes(x=sqrt(dist), y=log(zinc))) +
+  geom_point() +
+  geom_smooth(method = 'lm', se=FALSE) +
+  theme_minimal()
+```
+
+This gives an equation relating log zinc concentration to distance from the river,
+
+$$
+\log(zinc) = 7 - 2.55 \sqrt{dist}
+$$
+
+that we can use to predict the log zinc concentration across the flood plain:
+
+```{r}
+pred.sf <- broom::augment(mod, newdata=meuse.grid.sf, se_fit=TRUE) %>% st_as_sf()
+ggplot(pred.sf) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=.fitted), size=1) +
+  labs(col = "log(zinc)") +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+We can then subtract the predicted log zinc concentration, given the distance to the river from the observed log zinc concentrations and produce a map of the residuals (observed minus predicted):
+
+```{r}
+fit <- broom::augment(mod, meuse.sf) %>% st_as_sf()
+ggplot(fit) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(fill=.resid), shape=21) +
+  scale_fill_distiller(type='div', palette="PuOr", limits=c(-1.6,1.6))
+```
+
+We then perform simple kriging on this, by fitting a variogram:
+
+```{r}
+resid.var <- variogram(.resid ~ 1, data=fit)
+resid.mod <- fit.variogram(resid.var, model=vgm(0.2, "Sph", 800, 0.05))
+ggplot(data=variogramLine(resid.mod, maxdist=max(resid.var$dist)),
+       mapping=aes(x=dist, y=gamma)) +
+  geom_line() +
+  geom_point(data=resid.var) +
+  theme_minimal()
+```
+
+and then kriging to interpolate the 'residual' component across the region:
+
+```{r}
+krig.resid <- krige(.resid ~ 1, fit, meuse.grid.sf, model=resid.mod, debug.level=0)
+ggplot(krig.resid) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=var1.pred), size=1) +
+  labs(col="residual") +
+  scale_colour_distiller(type='div', palette="PuOr", limits=c(-0.7,0.7))
+```
+
+Combining this with the prediction from the linear regression we get our final predictions:
+
+```{r}
+final <-
+  pred.sf %>% st_join(krig.resid) %>% mutate(final = .fitted + var1.pred,
+                                             se = var1.var + .se.fit^2)
+
+ggplot(final) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=final), size=1) +
+  labs(col = "log(zinc)") +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6))
+```
+
+We can then combine the uncertainties from the kriging process and from the linear model predictions to give an uncertainty surface for our predictions:
+
+```{r}
+ggplot(final) +
+  geom_sf(data=river) +
+  geom_sf(mapping=aes(col=se), size=1) +
+  labs(col = "uncertainty") +
+  scale_color_distiller(palette="YlOrBr")
+```
+
+We notice that the variance in our predictions has now reduced significantly.
+
+In practice using R, we add a spatial trend in the kriging process we change the formula in the `variogram` and `krige` functions:
+
+```{r, echo=TRUE, eval=FALSE}
+dist.var <- variogram(log(zinc) ~ sqrt(dist), locations=meuse.sf)
+dist.mod <- fit.variogram(dist.var, model=vgm(0.2, "Sph", 800, 0.05))
+krig.dist <- krige(log(zinc) ~ sqrt(dist), meuse.sf, meuse.grid.sf, model=dist.mod)
+```

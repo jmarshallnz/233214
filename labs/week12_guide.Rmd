@@ -1,0 +1,15 @@
+---
+title: "Spatial interpolation"
+date: "Week 12"
+output: html_document
+---
+
+This week we will continue working with point patterns, concentrating now on [Spatial interpolation](../notes/week12_interpolation.html).
+
+**There is no work to hand in as part of your portfolio this week.**
+
+You should utilise the material in the notes above and then work through the workshop sheet below (Right click -> Save link as, and load into RStudio):
+
+[week12_workshop.Rmd](week12_workshop.Rmd)
+
+Any questions, please contact Jonathan M

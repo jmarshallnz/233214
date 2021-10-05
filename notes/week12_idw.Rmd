@@ -65,14 +65,14 @@ $$
 $$
 where the weights $w_i$ are given by
 $$
-w_i = \frac{1}{\lVert \mathbf{x} - \mathbf{x}_i\rVert^d}
+w_i = \frac{1}{\lVert \mathbf{x} - \mathbf{x}_i\rVert^p}
 $$
 
-where $d$ is the inverse distance power, which we have freedom to vary. The weights are thus the inverse distance between the new point $\mathbf{x}$ and our sampled points $\mathbf{x}_i$: sampled points that are close will have a smaller distance and thus a larger weight.
+where $p$ is the inverse distance power, which we have freedom to vary. The weights are thus the inverse distance between the new point $\mathbf{x}$ and our sampled points $\mathbf{x}_i$: sampled points that are close will have a smaller distance and thus a larger weight.
 
-The inverse distance power $d$ controls how strongly neighbouring points have priority over points far away. If $d$ is small (e.g. $d < 1$) then points far away can have influence on the estimated measure, whereas if $d$ is larger (e.g. $d > 2$) then points further away have very little influence on the estimated measure.
+The inverse distance power $p$ controls how strongly neighbouring points have priority over points far away. If $p$ is small (e.g. $p < 1$) then points far away can have influence on the estimated measure, whereas if $p$ is larger (e.g. $p > 2$) then points further away have very little influence on the estimated measure.
 
-A typical value is $d=2$ but this can be experimented with. We can do the estimation with the `idw` function from `gstat` which can take either an `sf` object (from `sf`) or a `Spatial` object (from `sp`). We then supply the variable we want and the new data locations we want to interpolate to, along with the power to use:
+A typical value is $p=2$ but this can be experimented with. We can do the estimation with the `idw` function from `gstat` which can take either an `sf` object (from `sf`) or a `Spatial` object (from `sp`). We then supply the variable we want and the new data locations we want to interpolate to, along with the power to use:
 
 ```{r, echo=TRUE, eval=FALSE}
 meuse.idw <- idw(log(zinc) ~ 1, locations=meuse.sf, newdata=meuse.grid.sf, idp = 2)

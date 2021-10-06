@@ -27,7 +27,7 @@ With [inverse distance weighting](week12_idw.html) and [simple kriging](week12_s
 
 This is generally a good thing to do when you have no strong external measures giving rise to the measure being sampled.
 
-However, in many situations the underlying spatial trend may be known to have a direction (e.g. it increases as $x$ or $y$ increases) or may be known to correlate with some other measure, and we have that other measure available to us at both the sampled locations and unobserved locations where we which to interpolate.
+However, in many situations the underlying spatial trend may be known to have a direction (e.g. it increases as $x$ or $y$ increases) or may be known to correlate with some other measure, and we have that other measure available to us at both the sampled locations and unobserved locations where we wish to interpolate.
 
 In this case, we can model the spatial trend in the outcome measure of interest using this covariate information at the sampled locations, and then predict the spatial trend to unobserved locations. The left-overs or residuals from this trend can then be kriged with [simple kriging](week12_simple_kriging.html) so that the resulting predictions incorporate the spatial correlation.
 
@@ -59,9 +59,10 @@ ggplot(meuse.grid.sf) +
 Universal Kriging is used where we have some covariate information that can be used to predict the spatial trend. The process is then:
 
 1. We estimate a spatial trend using a standard statistical model (e.g. model the average spatial trend in terms of it's location (x and y) or some covariates).
-2. We then subtract the trend from the observations to give residual measures. This should have no trend.
-3. We use [simple kriging](week12_simple_kriging.html) to interpolate the residuals.
-4. We add the simple kriging interpolation onto the predictions from the trend model.
+2. We use the model to predict the trend across the region.
+3. We then subtract the trend from the observations to give residual measures. This should have no trend.
+4. We use [simple kriging](week12_simple_kriging.html) to interpolate the residuals.
+5. We add the simple kriging interpolation onto the predictions from the trend model.
 
 We notice that zinc concentrations are highest closest to the river, and we have that as a covariate both at our sampled and unsampled locations. Thus, we could use distance to the river to model the spatial trend. Plotting log zinc concentrations versus distance gives:
 

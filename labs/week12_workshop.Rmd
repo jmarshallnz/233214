@@ -13,16 +13,7 @@ The key idea is that measurements over a spatial region tend to be correlated - 
 
 So when we model the measurement spatially, we need to account for that correlation.
 
-We do this using a **variogram** - this shows how correlated measurements are based on how close together they might be. Points that are very close will show little variation, while points further apart will show more variation.
-
-The process of spatial modelling is:
-
-1. We estimate a **spatial trend** using a standard statistical model (e.g. model the average spatial trend in terms of longitude and latitude or some covariates).
-2. We then remove the trend and assess the spatial correlation of the left overs (the residuals) using a variogram.
-3. We then fit a variogram model to the residual variogram and use this to predict the spatial residual across the region.
-4. We add that trend model to do prediction.
-
-All of the above can be done using the `krige` function from the `gstat` package.
+We'll look at three methods: Inverse distance weighting, simple kriging and universal kriging.
 
 **You should work through this worksheet, but do not need to hand it in as part of your Portfolio.**
 
@@ -50,7 +41,7 @@ As body mass is a key requirement, we were interested in estimating the likely b
 
 The data are available at only 42 locations, so this is a bit of a stretch! Nonetheless, let's see what we can do. We start by reading in the data locations along with the north american boundary, setup the CRS and do a plot, choosing Lambert conformal conic projection: 
 
-```{r}
+```{r, message=FALSE}
 # read in the data
 bats.csv = read_csv("https://www.massey.ac.nz/~jcmarsha/233214/data/bats/bats.csv")
 NA_boundary <- read_sf("https://www.massey.ac.nz/~jcmarsha/233214/data/bats/NA_boundary.sqlite")
@@ -110,7 +101,6 @@ We can use the `idw` function from the `gstat` package for this. We set the inve
 NOTE: If you have the `spatstat` package loaded, this might not work as there may be a clash with `spatstat::idw`. You can change the `idw` below to `gstat::idw` as one way to fix this.
 
 ```{r}
-# We'll start with inverse distance weighting
 mass.idw <- idw(mass ~ 1, locations=bats, newdata=NA_points,
                 idp=2)
 mass.idw
@@ -139,6 +129,7 @@ ggplot() +
   coord_sf(crs = crs_for_map) +
   scale_fill_viridis_c()
 ```
+
 As might be expected, we have basically a smoothed map where the predicted mass converges on the mass at each location.
 
 In the code block below, try taking the above code and adapting it for the case where the inverse distance power is 1 (i.e. set `idp=1` in the `idw` function)
@@ -161,6 +152,7 @@ Essentially we estimate the pair-wise variation in bat mass in different distanc
 const.vgm <- variogram(mass ~ 1, data=bats, cutoff=5000)
 plot(const.vgm)
 ```
+
 We can see that the variance is low at smaller distances (less than 1000 km) and then increases and bounces about a bit. Note that because we don't have many points, this is a super noisy measure. So at best we're going to have a pretty lousy estimate of how the variation in bat mass changes with distance.
 
 We can attempt to fit a mathematical model to these estimates using the `fit.variogram` function:

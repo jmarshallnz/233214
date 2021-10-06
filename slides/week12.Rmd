@@ -141,8 +141,8 @@ Given measurements $z_i$ at location $\mathbf{x}_i$ for $i=1, \ldots n$, we esti
 $$\hat{z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}, \quad\mbox{where } w_i = \frac{1}{\lVert \mathbf{x} - \mathbf{x}_i\rVert^p}.$$
 
 The power $p$ controls how quickly the influence of points further away drops off.
- - Smaller values $p < 2$ allow distance points to have more influence.
- - Larger values $p > 2$ mean distance points have little or no influence.
+ - Smaller values $p < 2$ allow distant points to have more influence.
+ - Larger values $p > 2$ mean distant points have little or no influence.
 
 Using $p=2$ is often about right.
 
@@ -152,7 +152,7 @@ Using $p=2$ is often about right.
 
 We use the `idw` function from the `gstat` library, which can take either an `sf` object (from `sf`) or a `Spatial` object (from `sp`).
 
-We then supply the variable we want and the new data locations we want to interpolate to, along with the power to use:
+We then supply the variable we want to interpolate, the new data locations where we wish to estimate that variable, and the power to use:
 
 ```{r, echo=TRUE, eval=FALSE}
 library(gstat)
@@ -269,7 +269,7 @@ $$
 \gamma_{ij} = \frac{1}{2}(z_i - z_j)^2
 $$
 
-and plots this against the distance $d_{ij}$ between observations $i$ and $j$, for all pairs of observations.
+We then plot this against the distance $d_{ij}$ between observations $i$ and $j$, for all pairs of observations.
 
 ---
 
@@ -337,7 +337,7 @@ ggplot(gamma_vs_d) +
 
 ## Variogram models
 
-Once we have plotted our variogram, we need to fit a variogram model $\gamma(d)$. There are many options:
+We then fit a variogram model so we can estimate $\gamma(d)$ at all values $d$. There are many options:
 
 ```{r, fig.dim=c(8,3.5)}
 all <- show.vgms(plot=FALSE) %>% rename(gamma=semivariance)
@@ -464,7 +464,7 @@ You should see low uncertainty at the sampled locations and higher uncertainty i
 ---
 
 .left-code[
-## Simple Kriging Interpolation
+## Simple Kriging: Interpolation
 
 ```{r, eval=FALSE, echo=TRUE}
 krig.const <- krige(log(zinc) ~ 1,
@@ -501,13 +501,13 @@ ggplot(krig.const) +
 ---
 
 .left-code[
-## Simple Kriging Uncertainty
+## Simple Kriging: Uncertainty
 
 ```{r, eval=FALSE, echo=TRUE}
 krig.const <- krige(log(zinc) ~ 1,
                     locations = meuse.sf,
                     newdata = meuse.grid.sf,
-                    model=const.mod)
+                    model = const.mod)
 
 ggplot(krig.const) +
   geom_sf(data=river) +
@@ -543,7 +543,7 @@ Both simple kriging and inverse distance weighted interpolation use only the val
 
 This is generally the right thing to do.
 
-In some situations we might know that the underlying spatial trend correlates with some other measure, which we have available to us across the region where we wish to interpolate.
+In some situations we might know that the underlying spatial trend correlates with some other measure, which we have available across the region where we wish to interpolate.
 
 If we can model the spatial trend, we might be able to do a better job of interpolation.
 
@@ -553,11 +553,11 @@ Universal Kriging essentially combines a standard linear regression model for th
 
 ## Universal Kriging
 
-Assume we have a covariate that can be used to predict the spatial trend. We implement universal kriging as follows:
+Assume we have a set of covariates that can be used to predict the spatial trend. We implement universal kriging as follows:
 
 1. Estimate the spatial trend using a standard statistical model (e.g. model the average spatial trend in terms of it's location (x and y) or some covariates).
 
-2. Use that statistical model to predict the average spatial trend across ther egion.
+2. Use that statistical model to predict the average spatial trend across the region.
 
 3. Subtract the trend from the observations to give residuals.
 
@@ -570,7 +570,7 @@ Assume we have a covariate that can be used to predict the spatial trend. We imp
 .left-code[
 ## Example
 
-The log zinc concentrations were closest near the river.
+The log zinc concentrations were highest when they were closest to the river.
 
 We can confirm this by plotting the log zinc concentration against the distance to the river:
 
@@ -606,7 +606,14 @@ ggplot(data = meuse.sf,
 ]
 
 .right-plot[
-```{r, ref.label="dist2"}
+```{r}
+ggplot(data = meuse.sf,
+       mapping = aes(x=sqrt(dist),
+                     y=log(zinc))) +
+  geom_point() +
+  scale_x_continuous(limits=c(0,0.95)) +
+  scale_y_continuous(limits=c(4.4, 7.6)) +
+  theme_minimal()
 ```
 ]
 
@@ -629,13 +636,24 @@ ggplot(data = meuse.sf,
   theme_minimal()
 ```
 
-with equation
+This has equation
 
 $$\log(zinc) = 7 - 2.55 \sqrt{dist}$$
 ]
 
 .right-plot[
-```{r, ref.label="dist3", message=FALSE}
+```{r, message=FALSE}
+mod <- lm(log(zinc) ~ sqrt(dist),
+          data=meuse.sf)
+
+ggplot(data = meuse.sf,
+       mapping = aes(x=sqrt(dist),
+                     y=log(zinc))) +
+  geom_point() +
+  geom_smooth(method='lm') +
+  scale_x_continuous(limits=c(0,0.95)) +
+  scale_y_continuous(limits=c(4.4, 7.6)) +
+  theme_minimal()
 ```
 ]
 
@@ -647,8 +665,9 @@ $$\log(zinc) = 7 - 2.55 \sqrt{dist}$$
 We can use the regression model to predict the spatial trend across the region
 
 ```{r, echo=TRUE, eval=FALSE}
-pred.sf <- broom::augment(mod,
-                          newdata=meuse.grid.sf) %>%
+library(broom)
+pred.sf <- augment(mod,
+                   newdata=meuse.grid.sf) %>%
   st_as_sf()
 
 ggplot(pred.sf) +
@@ -671,7 +690,7 @@ ggplot(pred.sf) +
   geom_sf(data=river) +
   geom_sf(mapping=aes(col=.fitted), size=0.7) +
   labs(col = "log(zinc)") +
-  scale_color_distiller(palette="YlGnBu", limits=c(4.4, 7.6)) +
+  scale_color_distiller(palette="YlGnBu", limits=c(4.3, 7.7)) +
   theme_void()
 ```
 ]
@@ -685,7 +704,8 @@ Subtract the predicted trend from our observed values
 to give residuals at our sampled locations.
 
 ```{r, echo=TRUE, eval=FALSE}
-fit <- broom::augment(mod, meuse.sf) %>%
+fit <- augment(mod,
+               data=meuse.sf) %>%
   st_as_sf()
 
 ggplot(data = fit) +
@@ -872,4 +892,4 @@ The difference is we need to determine a reasonable model formula to do universa
 
 - Simple kriging works better in most cases, and can give an estimate of uncertainty.
 
-- Universal kriging adds a parametric model for the trend, so is useful if you know the measure that is only available at sampled locations is correlated with things you have measured everywhere.
+- Universal kriging adds a parametric model for the trend. It is useful if you know that the measure you want to interpolate is correlated with things you have measured everywhere.

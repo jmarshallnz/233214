@@ -58,10 +58,10 @@ ggplot(meuse.grid.sf) +
 
 With inverse distance weighting, we estimate the measurement at an unsampled location using values from nearby locations, weighted in proportion to the proximity of the sampled points to the unsampled location.
 
-Given measurements $z_i$ at location $\mathbf{x}_i$ for $i=1, \ldots n$, we estimate the value $\hat{Z}$ at a new point $\mathbf{x}$ using:
+Given measurements $z_i$ at location $\mathbf{x}_i$ for $i=1, \ldots n$, we estimate the value $\hat{z}$ at a new point $\mathbf{x}$ using:
 
 $$
-\hat{Z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
+\hat{z} = \frac{\sum_{i=1}^n w_iz_i}{\sum_{i=1}^n w_i}
 $$
 where the weights $w_i$ are given by
 $$

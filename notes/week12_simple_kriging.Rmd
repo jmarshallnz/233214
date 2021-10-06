@@ -128,9 +128,9 @@ $$
 $$
 where $\gamma$ is the variogram function, $w_j$ are the weights, $\mathbf{x}$ is the unobserved location for which we want to interpolate, $\mathbf{x}_i$ are our sampled locations, and $\mu$ is an additional constant (a [Lagrange multiplier](https://en.wikipedia.org/wiki/Lagrange_multiplier)) that contributes to the variance (uncertainty) of the kriging estimate.
 
-Once we have the weights $w_j$, we then compute the interpolated measure $\hat{Z}$ using the same equation as was used for [IDW](week12_idw.html):
+Once we have the weights $w_j$, we then compute the interpolated measure $\hat{z}$ using the same equation as was used for [IDW](week12_idw.html), though we note that $\sum_j w_j = 1$ so it simplifies to:
 $$
-\hat{Z} = \frac{\sum_{j=1}^n w_jz_j}{\sum_{j=1}^n w_j}
+\hat{z} = \sum_{j=1}^n w_jz_j
 $$
 We do this in R with the `krige` function:
 

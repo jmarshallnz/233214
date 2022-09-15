@@ -62,7 +62,7 @@ This makes sense, as it is just the number of points divided by the area:
 
 ```{r}
 npoints = cases$n
-area = st_as_sfc(pbc$window) %>% st_area()
+area = st_as_sfc(pbc$window) |> st_area()
 
 intensity = npoints / area
 intensity
@@ -81,7 +81,7 @@ mod.linear
 We can see here that $x$ seems to be important (low P-value), while $y$ doesn't. We could produce a plot of the resulting intensity to see how it looks:
 
 ```{r}
-pred.df <- mod.linear %>% predict() %>% as.data.frame()
+pred.df <- mod.linear |> predict() |> as.data.frame()
 
 ggplot(pred.df) +
   geom_raster(aes(x=x, y=y, fill=value)) +
@@ -96,7 +96,7 @@ As expected, the fit isn't very good. We might try a second order polynomial in 
 ```{r}
 mod.quad <- ppm(cases ~ polynom(x, y, 2))
 
-mod.quad %>% predict() %>% as.data.frame() %>%
+mod.quad |> predict() |> as.data.frame() |>
   ggplot() +
   geom_raster(aes(x=x, y=y, fill=value)) +
   geom_point(data=cases.df, aes(x=x, y=y), shape="circle filled", alpha=0.5) +

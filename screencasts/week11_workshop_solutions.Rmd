@@ -72,7 +72,7 @@ points(larynx, pch=19, col='red')
 We can also do this using `ggplot` by first translating things into data frames.
 
 ```{r}
-chorley.df <- as.data.frame(chorley) %>%
+chorley.df <- as.data.frame(chorley) |>
   arrange(desc(marks))
 chorley.win <- as.data.frame(chorley$window)
 
@@ -222,7 +222,7 @@ The following code does this: we start by using `expand.grid` to pull out the x,
 pts <- expand.grid(x=lung.im$xcol, y=lung.im$yrow)
 dist <- 1/crossdist(pts$x, pts$y, chorley.extra$incin$x,
                     chorley.extra$incin$y)^2
-pts <- pts %>% mutate(z = dist)
+pts <- pts |> mutate(z = dist)
 ```
 
 To get back to the image we want, we first want to discard the pixels outside our boundary. One way to do this is to convert to `ppp` with the appropriate window, then back to a `data.frame`. We then convert to a pixel image and plot:

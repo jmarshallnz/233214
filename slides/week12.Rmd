@@ -28,9 +28,9 @@ knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(fig.dim=c(4.5, 4.5), fig.retina=2, out.width="100%")
 
 data(meuse.riv)
-river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
-  filter(y < 334500 & y > 329500) %>%
-  as.matrix() %>% st_linestring()
+river <- data.frame(meuse.riv) |> set_names(nm=c('x', 'y')) |>
+  filter(y < 334500 & y > 329500) |>
+  as.matrix() |> st_linestring()
 ```
 
 ## Spatial Interpolation
@@ -288,8 +288,8 @@ against the distance $d_{ij}$ for all pairs $i$ and $j$.
 .right-plot[
 ```{r}
 d <- st_distance(meuse.sf)
-gamma <- dist(log(meuse.sf$zinc)) %>% as.matrix()
-gamma_vs_d <- data.frame(gamma = as.numeric(gamma)/2, dist = as.numeric(d)) %>%
+gamma <- dist(log(meuse.sf$zinc)) |> as.matrix()
+gamma_vs_d <- data.frame(gamma = as.numeric(gamma)/2, dist = as.numeric(d)) |>
   filter(dist < 1500)
 ggplot(gamma_vs_d) +
   geom_point(aes(x=dist, y=gamma), alpha=0.3) +
@@ -323,8 +323,8 @@ variogram(log(zinc) ~ 1, data=meuse.sf)
 
 .right-plot[
 ```{r}
-bands <- gamma_vs_d %>% mutate(band = cut(dist, breaks=15)) %>%
-  group_by(band) %>% summarise(dist=mean(dist), gamma=mean(gamma))
+bands <- gamma_vs_d |> mutate(band = cut(dist, breaks=15)) |>
+  group_by(band) |> summarise(dist=mean(dist), gamma=mean(gamma))
 
 ggplot(gamma_vs_d) +
   geom_point(aes(x=dist, y=gamma), alpha=0.1) +
@@ -340,7 +340,7 @@ ggplot(gamma_vs_d) +
 We then fit a variogram model so we can estimate $\gamma(d)$ at all values $d$. There are many options:
 
 ```{r, fig.dim=c(8,3.5)}
-all <- show.vgms(plot=FALSE) %>% rename(gamma=semivariance)
+all <- show.vgms(plot=FALSE) |> rename(gamma=semivariance)
 ggplot(data=all) +
   geom_line(mapping=aes(x=distance, y=gamma)) +
   facet_wrap(vars(model), ncol=6) +
@@ -667,7 +667,7 @@ We can use the regression model to predict the spatial trend across the region
 ```{r, echo=TRUE, eval=FALSE}
 library(broom)
 pred.sf <- augment(mod,
-                   newdata=meuse.grid.sf) %>%
+                   newdata=meuse.grid.sf) |>
   st_as_sf()
 
 ggplot(pred.sf) +
@@ -683,7 +683,7 @@ ggplot(pred.sf) +
 ```{r}
 pred.sf <- broom::augment(mod,
                           newdata=meuse.grid.sf,
-                          se_fit=TRUE) %>%
+                          se_fit=TRUE) |>
   st_as_sf()
 
 ggplot(pred.sf) +
@@ -705,7 +705,7 @@ to give residuals at our sampled locations.
 
 ```{r, echo=TRUE, eval=FALSE}
 fit <- augment(mod,
-               data=meuse.sf) %>%
+               data=meuse.sf) |>
   st_as_sf()
 
 ggplot(data = fit) +
@@ -720,7 +720,7 @@ ggplot(data = fit) +
 
 .right-plot[
 ```{r}
-fit <- broom::augment(mod, meuse.sf) %>%
+fit <- broom::augment(mod, meuse.sf) |>
   st_as_sf()
 
 ggplot(fit) +
@@ -807,8 +807,8 @@ ggplot(krig.resid) +
 Combine the prediction with the kriged residuals:
 
 ```{r, echo=TRUE, eval=FALSE}
-final <- pred.sf %>%
-  st_join(krig.resid) %>%
+final <- pred.sf |>
+  st_join(krig.resid) |>
   mutate(final = .fitted + var1.pred,
          se = var1.var + .se.fit^2)
 
@@ -823,8 +823,8 @@ ggplot(final) +
 
 .right-plot[
 ```{r}
-final <- pred.sf %>%
-  st_join(krig.resid) %>%
+final <- pred.sf |>
+  st_join(krig.resid) |>
   mutate(final = .fitted + var1.pred,
          se = var1.var + .se.fit^2)
 

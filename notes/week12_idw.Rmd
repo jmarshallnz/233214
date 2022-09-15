@@ -13,9 +13,9 @@ library(sf)
 library(patchwork)
 
 data(meuse.riv)
-river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
-  filter(y < 334500 & y > 329500) %>%
-  as.matrix() %>% st_linestring()
+river <- data.frame(meuse.riv) |> set_names(nm=c('x', 'y')) |>
+  filter(y < 334500 & y > 329500) |>
+  as.matrix() |> st_linestring()
 
 knitr::opts_chunk$set(echo = FALSE, message=FALSE, fig.align='center')
 theme_set(theme_void())

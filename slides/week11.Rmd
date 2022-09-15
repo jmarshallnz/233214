@@ -60,11 +60,11 @@ Recall that kernel density estimation of a point pattern involves placing a kern
 ```{r, echo=FALSE, fig.dim=c(8,3.5), message=FALSE}
 data(pbc)
 set.seed(2)
-cases.df = as.data.frame(split(pbc)$case) %>% sample_n(50) %>% slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
+cases.df = as.data.frame(split(pbc)$case) |> sample_n(50) |> slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
 window = as.data.frame(pbc$window)
 cases = as.ppp(cases.df, W=pbc$window)
 
-g1 = ggplot(cases.df %>% tibble::rowid_to_column()) +
+g1 = ggplot(cases.df |> tibble::rowid_to_column()) +
   geom_point(aes(x=x, y=y), size=3, shape='circle filled') +
   geom_point(aes(x=x, y=y), size=7, alpha=0.6, shape='circle filled') +
   geom_point(aes(x=x, y=y), size=12, alpha=0.3, shape='circle filled') +
@@ -72,7 +72,7 @@ g1 = ggplot(cases.df %>% tibble::rowid_to_column()) +
   coord_fixed() +
   theme_void()
 
-fixed = bivariate.density(cases, h0=10)$z %>% as.data.frame()
+fixed = bivariate.density(cases, h0=10)$z |> as.data.frame()
 g2 = ggplot(fixed) +
   geom_raster(aes(x=x, y=y, fill=value)) +
   geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
@@ -343,7 +343,7 @@ As all NZers know, per-capita is the best measure per-capita.
 ## Relative risk estimation
 
 ```{r, fig.dim=c(8,3.5)}
-all = pbc %>% as.data.frame() %>%
+all = pbc |> as.data.frame() |>
   mutate(marks = fct_recode(marks, Cases = "case", Controls = "control"))
 window = as.data.frame(pbc$window)
 
@@ -399,7 +399,7 @@ rr <- risk(cases.dens, controls.dens)
 
 ```{r, fig.dim=c(8,3.5)}
 bind_rows(Cases=as.data.frame(cases.dens$z),
-          Controls=as.data.frame(controls.dens$z), .id='which') %>%
+          Controls=as.data.frame(controls.dens$z), .id='which') |>
   ggplot() +
   geom_raster(aes(x=x, y=y, fill=value)) +
   geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +

@@ -69,7 +69,7 @@ We've downsampled them to make things a bit more manageable for today's workshop
 
 ```{r}
 NA_info <- read_sf("https://www.massey.ac.nz/~jcmarsha/233214/data/bats/NA_info.sqlite")
-NA_points <- NA_info %>%
+NA_points <- NA_info |>
   mutate(tile = GEOMETRY,
          GEOMETRY = st_centroid(tile))
 
@@ -119,7 +119,7 @@ but it will likely look a bit nicer if we join back to our `NA_points` dataset s
 
 ```{r}
 # spatial join to the NA_points dataset
-NA.idw.tile <- mass.idw %>% st_join(NA_points)
+NA.idw.tile <- mass.idw |> st_join(NA_points)
 
 # And plot
 ggplot() +
@@ -177,7 +177,7 @@ const.krig
 This is an `sf` object containing the outcome variable for prediction `var1.pred` and it's uncertainty measure `var1.var`, along with the geometry. Let's again join it back to get our tile geometry again and plot:
 
 ```{r}
-const.tile <- const.krig %>% st_join(NA_points)
+const.tile <- const.krig |> st_join(NA_points)
 ggplot() +
   geom_sf(data=const.tile, aes(geometry=tile, fill=var1.pred), col=NA) +
   geom_sf(data=NA_boundary, fill=NA) +
@@ -227,7 +227,7 @@ This fit might be a bit better than our last one. We're underestimating the vari
 ```{r}
 covar.krig <- krige(mass ~ freeze_days, locations=bats, newdata=NA_points, model=covar.mod)
 
-covar.tile <- covar.krig %>% st_join(NA_points)
+covar.tile <- covar.krig |> st_join(NA_points)
 ggplot() +
   geom_sf(data=covar.tile, aes(geometry=tile, fill=var1.pred), col=NA) +
   geom_sf(data=NA_boundary, fill=NA) +

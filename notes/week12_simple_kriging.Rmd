@@ -13,9 +13,9 @@ library(sf)
 library(patchwork)
 
 data(meuse.riv)
-river <- data.frame(meuse.riv) %>% set_names(nm=c('x', 'y')) %>%
-  filter(y < 334500 & y > 329500) %>%
-  as.matrix() %>% st_linestring()
+river <- data.frame(meuse.riv) |> set_names(nm=c('x', 'y')) |>
+  filter(y < 334500 & y > 329500) |>
+  as.matrix() |> st_linestring()
 
 knitr::opts_chunk$set(echo = FALSE, message=FALSE, fig.align='center')
 theme_set(theme_void())
@@ -62,8 +62,8 @@ and plots this against the distance $d_{ij}$ between observations $i$ and $j$, f
 
 ```{r}
 d <- st_distance(meuse.sf)
-gamma <- dist(log(meuse.sf$zinc)) %>% as.matrix()
-gamma_vs_d <- data.frame(gamma = as.numeric(gamma)/2, dist = as.numeric(d)) %>%
+gamma <- dist(log(meuse.sf$zinc)) |> as.matrix()
+gamma_vs_d <- data.frame(gamma = as.numeric(gamma)/2, dist = as.numeric(d)) |>
   filter(dist < 1500)
 ggplot(gamma_vs_d) +
   geom_point(aes(x=dist, y=gamma), alpha=0.3) +
@@ -73,8 +73,8 @@ ggplot(gamma_vs_d) +
 This is a bit overwhelming to interpret, so we typically divide the distance into bands and then estimate the average $\gamma$ within each band:
 
 ```{r}
-bands <- gamma_vs_d %>% mutate(band = cut(dist, breaks=15)) %>%
-  group_by(band) %>% summarise(dist=mean(dist), gamma=mean(gamma))
+bands <- gamma_vs_d |> mutate(band = cut(dist, breaks=15)) |>
+  group_by(band) |> summarise(dist=mean(dist), gamma=mean(gamma))
 
 ggplot(gamma_vs_d) +
   geom_point(aes(x=dist, y=gamma), alpha=0.1) +
@@ -91,7 +91,7 @@ const.var <- variogram(log(zinc) ~ 1, data=meuse.sf)
 We then fit a **variogram model** $\gamma(d)$ to this. There's a whole heap of variogram models available:
 
 ```{r}
-all <- show.vgms(plot=FALSE) %>% rename(gamma=semivariance)
+all <- show.vgms(plot=FALSE) |> rename(gamma=semivariance)
 ggplot(data=all) +
   geom_line(mapping=aes(x=distance, y=gamma)) +
   facet_wrap(vars(model)) +

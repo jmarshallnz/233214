@@ -16,10 +16,10 @@ library(patchwork)
 
 data(pbc)
 set.seed(2)
-cases = as.data.frame(split(pbc)$case) %>% sample_n(50) %>% slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
+cases = as.data.frame(split(pbc)$case) |> sample_n(50) |> slice(c(27,7,16,15,25,21,42,13,46,23,50,32,43,45,1))
 window = as.data.frame(pbc$window)
 
-g1 = ggplot(cases %>% tibble::rowid_to_column()) +
+g1 = ggplot(cases |> tibble::rowid_to_column()) +
   geom_point(aes(x=x, y=y), size=3, shape='circle filled') +
   geom_point(aes(x=x, y=y), size=7, alpha=0.6, shape='circle filled') +
 #  geom_text(aes(x=x, y=y, label=rowid)) +
@@ -28,7 +28,7 @@ g1 = ggplot(cases %>% tibble::rowid_to_column()) +
   coord_fixed() +
   theme_void()
 
-fixed = bivariate.density(as.ppp(cases, W=pbc$window), h0=10)$z %>% as.data.frame()
+fixed = bivariate.density(as.ppp(cases, W=pbc$window), h0=10)$z |> as.data.frame()
 g2 = ggplot(fixed) +
   geom_raster(aes(x=x, y=y, fill=value)) +
   geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
@@ -139,8 +139,8 @@ fixed.df <- as.data.frame(fixed$z)
 adapt.df <- as.data.frame(adapt$z)
 
 bind_rows(Fixed=fixed.df,
-          Adaptive=adapt.df, .id='model') %>%
-  mutate(model = as_factor(model)) %>%
+          Adaptive=adapt.df, .id='model') |>
+  mutate(model = as_factor(model)) |>
   ggplot() +
   geom_raster(aes(x=x, y=y, fill=value)) +
   geom_polygon(data=cases.win, aes(x=x, y=y), fill='transparent', col='black') +
@@ -154,8 +154,8 @@ As can be seen, the adaptive estimate has increased detail where the main group 
 plot the bandwidths to see how it works:
 
 ```{r}
-bandwidths <- data.frame(cases.df, Fixed=fixed$h, Adaptive=adapt$h) %>%
-  pivot_longer(Fixed:Adaptive, names_to="model", values_to="Bandwidth") %>%
+bandwidths <- data.frame(cases.df, Fixed=fixed$h, Adaptive=adapt$h) |>
+  pivot_longer(Fixed:Adaptive, names_to="model", values_to="Bandwidth") |>
   mutate(model = as_factor(model))
 
 ggplot(bandwidths) +

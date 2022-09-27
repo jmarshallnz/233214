@@ -19,12 +19,13 @@ We'll look at three methods: Inverse distance weighting, simple kriging and univ
 
 ## Packages
 
-Today we'll be using the `tidyverse` for ggplot charts, and `sf` and `gstat` for our spatial analyses. You may need to install the `gstat` package. Let's load them:
+Today we'll be using the `tidyverse` for ggplot charts, and `sf`, `gstat` and `stars` for our spatial analyses. You may need to install the `gstat` or `stars` packages. Let's load them:
 
 ```{r, message=FALSE}
 library(tidyverse)
 library(sf)
 library(gstat)
+library(stars)
 ```
 
 ## Data

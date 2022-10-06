@@ -16,6 +16,8 @@ You should utilise the material in the notes above and then work through the wor
 
 [week12_workshop.Rmd](week12_workshop.Rmd)
 
-**There is no work to hand in as part of your portfolio this week.**
+Once you've worked through that, download the portfolio sheet below, work through and add answers, Knit to HTML and upload to the stream dropbox.
+
+[week12_portfolio.Rmd](week12_portfolio.Rmd)
 
 Any questions, please contact Jonathan M

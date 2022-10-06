@@ -1,5 +1,5 @@
 ---
-title: "Point patterns - estimation and modelling disease data"
+title: "Point patterns - estimation and modelling disease data: Portfolio"
 author: "YOUR NAME HERE"
 date: "Week 11"
 output: html_document

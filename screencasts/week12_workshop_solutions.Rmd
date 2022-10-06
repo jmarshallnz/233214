@@ -16,16 +16,17 @@ So when we model the measurement spatially, we need to account for that correlat
 
 We'll look at three methods: Inverse distance weighting, simple kriging and universal kriging.
 
-**You should work through this worksheet, but do not need to hand it in as part of your Portfolio.**
+**You should work through this worksheet, but do not need to hand it in as part of your Portfolio. Once done, you should then work through and hand in the portfolio_week12.Rmd worksheet.**
 
 ## Packages
 
-Today we'll be using the `tidyverse` for ggplot charts, and `sf` and `gstat` for our spatial analyses. You may need to install the `gstat` package. Let's load them:
+Today we'll be using the `tidyverse` for ggplot charts, and `sf`, `gstat` and `stars` for our spatial analyses. You may need to install the `gstat` or `stars` packages. Let's load them:
 
 ```{r, message=FALSE}
 library(tidyverse)
 library(sf)
 library(gstat)
+library(stars)
 ```
 
 ## Data

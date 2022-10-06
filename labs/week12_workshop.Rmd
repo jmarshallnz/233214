@@ -1,6 +1,5 @@
 ---
 title: "Spatial interpolation"
-author: "YOUR NAME HERE"
 date: "Week 12"
 output: html_document
 ---
@@ -15,7 +14,7 @@ So when we model the measurement spatially, we need to account for that correlat
 
 We'll look at three methods: Inverse distance weighting, simple kriging and universal kriging.
 
-**You should work through this worksheet, but do not need to hand it in as part of your Portfolio.**
+**You should work through this worksheet, but do not need to hand it in as part of your Portfolio. Once done, you should then work through and hand in the portfolio_week12.Rmd worksheet.**
 
 ## Packages
 

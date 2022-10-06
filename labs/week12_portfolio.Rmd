@@ -1,0 +1,147 @@
+---
+title: "Point patterns - estimation and modelling disease data: Portfolio"
+author: "YOUR NAME HERE"
+date: "Week 12"
+output: html_document
+---
+
+## Introduction
+
+In this worksheet we will look at how we take measurement information from a set of points and extend or interpolate that measurement across a spatial region.
+
+The key idea is that measurements over a spatial region tend to be correlated - points that are close to each other typically give similar measurements because they are close.
+
+So when we model the measurement spatially, we need to account for that correlation.
+
+In this portfolio we will look at simple kriging and universal kriging.
+
+**You should work through the worksheet_week11.Rmd worksheet before this one. You should then work through this worksheet and fill in your answers, Knit, and hand the .html into the dropbox on stream.**
+
+## Packages
+
+Today we'll be using the `tidyverse` for ggplot charts, and `sf` and `gstat` for our spatial analyses. You may need to install the `gstat` package. Let's load them:
+
+```{r, message=FALSE}
+library(tidyverse)
+library(sf)
+library(gstat)
+```
+
+## Data
+
+The data for this portfolio is the pricing of 2 bedroom homes or apartments available for
+rent from AirBNB in and around the Sydney central business district.
+
+The data were obtained from http://insideairbnb.com/get-the-data and have been processed so as
+to make an interesting spatial analysis case study.
+
+We have coordinates of each AirBnB location along with their price, plus the distance to the harbour or coastline (i.e. distance to water).
+
+In addition, we have the sydney harbour and coastline to provide context for our map, and a grid of locations across the region for us to interpolate to.
+
+Let's load the data off the web and setup the CRS to a planar system appropriate for the area we're modelling (GDA2020 / MGA zone 56), and take a quick look at the sydney data:
+
+```{r, message=FALSE}
+sydney <- read_csv("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+sydney_grid <- read_csv("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney_grid.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+coast <- read_sf("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney_coast.geojson")
+
+sydney
+```
+ 
+You should see from the data that for each location we have an identifier, the name of the property, the price, and the distance to the coast.
+
+The goal will be to find a geospatial statistical model to estimate the price of 2 bedroom AirBnB properties at other locations across the area, noting that:
+
+1. There is very likely spatial auto-correlation: if a property has a higher price then it is likely near other properties with high prices (e.g. there is a benefit of location to what people will pay for a property).
+
+2. There is likely a relationship between the price per night and how close the property is to the harbour or coastline. People are likely to pay more for a water view.
+
+## Data exploration
+
+We'll start by plotting the location data using ggplot:
+
+```{r}
+ggplot(sydney |> arrange(price)) +
+  geom_sf(aes(col = price), alpha=0.5) +
+  geom_sf(data=coast) +
+  scale_colour_continuous(trans=scales::log10_trans())
+```
+
+### Q1: Based on this plot, do you see evidence of spatial autocorrelation in price? Explain your answer.
+
+WRITE YOUR ANSWER HERE
+
+Let's check whether there might be a relationship between distance to the coast and price, by ignoring the spatial component and just plotting price against distance to coast:
+
+```{r}
+ggplot(sydney) +
+  geom_point(aes(x=dist_to_coast, y=price))
+```
+
+We note the relationship appears to be decreasing, but it is non-linear. In statistics generally if we can transform something to be linear it allows us to use the linear model - let's try a log/log plot instead:
+
+```{r}
+ggplot(sydney) +
+  geom_point(aes(x=log(dist_to_coast), y=log(price)))
+```
+
+### Q2: In the code block below, fit a linear model for log(price) in terms of log(dist_to_coast) and produce a summary. Is the relationship useful? Explain your answer.
+
+```{r}
+```
+
+WRITE YOUR CODE IN THE ABOVE BLOCK, AND YOUR ANSWER HERE
+
+We'll now use simple kriging to interpolate the price over the gridded area. We start by doing a variogram and fitting a spherical variogram model to it:
+
+```{r}
+const.vgm <- variogram(log(price) ~ 1, data=sydney)
+const.mod <- fit.variogram(const.vgm, model=vgm(0.5, "Sph", 5000, 0.1))
+plot(const.vgm, const.mod)
+```
+
+Next, we perform kriging to the gridded surface and plot:
+
+```{r}
+const.krig <- krige(log(price) ~ 1, locations=sydney,
+                    newdata=sydney_grid, model=const.mod)
+
+ggplot(const.krig) +
+  geom_sf(aes(col=exp(var1.pred))) +
+  geom_sf(data=coast) +
+  scale_color_viridis_c(trans = 'log10', limits=c(80, 3000)) +
+  labs(col = 'Price per night')
+```
+
+Next, we'll try universal kriging to incorporate the information about distance to coast. Firstly the variogram, again using a spherical model:
+
+```{r}
+covar.vgm <- variogram(log(price) ~ log(dist_to_coast), data=sydney)
+covar.mod <- fit.variogram(covar.vgm, model=vgm(0.5, "Sph", 5000, 0.1))
+plot(covar.vgm, covar.mod)
+```
+
+### Q3: In the code block below, write the code to perform universal kriging of log(price) using log(dist_to_coast) and produce a plot of the resulting predicted prices.
+
+```{r}
+```
+
+Suppose a new 2 bedroom apartment has been built and the owner is interested in using it for an AirBnB. The location is given below, where we also compute the distance to the coast.
+
+```{r}
+new_apartment <- data.frame(X = 335000, Y = 6251500) |>
+  st_as_sf(coords = c("X", "Y"), crs=7856) |>
+  mutate(dist_to_coast = st_distance(geometry, coast) |> as.numeric())
+```
+
+### Q4: Using the universal kriging model, What would you expect the price for this property to be?
+
+```{r}
+```
+
+WRITE THE CODE IN THE ABOVE CHUNK AND SUMMARISE YOUR ANSWER HERE.

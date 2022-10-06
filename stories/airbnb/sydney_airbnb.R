@@ -13,10 +13,7 @@ listings <- lists |>
   st_as_sf(coords=c('longitude', 'latitude'), crs = st_crs(4326)) |>
   st_transform(crs = st_crs(7856))
 
-neighbours <- read_sf("stories/airbnb/data/neighbourhoods.geojson") |>
-  st_transform(crs=st_crs(7856)) |>
-  mutate(geometry = st_make_valid(geometry))
-
+# Border for our analyses (around Sydney CBD)
 bb <- st_bbox(c(xmin=328000,
           xmax=350000,
           ymin=6242000,
@@ -24,16 +21,19 @@ bb <- st_bbox(c(xmin=328000,
   st_set_crs(st_crs(7856)) |>
   st_as_sfc()
 
-border <- neighbours |>
+# AU map for border
+map <- read_sf("stories/airbnb/data/STE_2021_AUST_SHP_GDA2020/STE_2021_AUST_GDA2020.shp")
+
+au <- map |>
+  st_transform(crs=st_crs(7856)) |>
+  mutate(geometry = st_make_valid(geometry)) |>
+  summarise(geometry = st_union(geometry))
+
+border <- au |>
   summarise(geometry = st_union(geometry)) |>
   st_intersection(bb)
 
-neighbours |> st_intersection(bb) |>
-  mutate(area = st_area(geometry)) |>
-  ggplot() +
-  geom_sf(aes(fill=neighbourhood)) +
-  geom_sf(data=listings, mapping=aes(size=clean_price), alpha=0.1, shape=21)
-#  xlim(c(310000, 350000)) + ylim(c(6230000, 6270000))
+plot(border)
 
 # OK, listings should be the smaller region
 listings <- listings |> st_intersection(bb)
@@ -45,19 +45,11 @@ train_sf <- train |>
   st_as_sf(coords = c('LONG', 'LAT'), crs=st_crs(4326)) |>
   st_transform(crs=st_crs(7856))
 
-# map stuff
-map <- read_sf("stories/airbnb/data/STE_2021_AUST_SHP_GDA2020/STE_2021_AUST_GDA2020.shp")
-
-au <- map |>
-  st_transform(crs=st_crs(7856)) |>
-  mutate(geometry = st_make_valid(geometry)) |>
-  summarise(geometry = st_union(geometry))
-
 # OK, see if we can get the NSW coastline out. Idea is to intersect with
 # an expanded NSW border...
-buff <- border |>
+buff <- bb |>
   st_geometry() |>
-  st_buffer(dist = 1500)
+  st_buffer(dist = 3000)
 
 au_line <-  au |> st_geometry() |>
   st_transform(crs = st_crs(buff)) |>
@@ -65,6 +57,8 @@ au_line <-  au |> st_geometry() |>
 
 coast <- au_line |>
   st_intersection(buff)
+
+plot(coast)
 
 # generate a grid and intersect the grid with the border
 syd_grid <- border |>
@@ -198,57 +192,99 @@ house_apart_mm <- house_apart |>
 set.seed(4)
 house_apart_mm <- house_apart |>
   filter(bedrooms == 2) |>
-  mutate(clean_price = clean_price * exp(-0.3*log(dist_to_rail) - 0.2*log(dist_to_coast)) * 40) |>
+  mutate(clean_price = signif(clean_price * exp(-0.3*log(dist_to_rail) - 0.2*log(dist_to_coast)) * 40, 2)) |>
   filter(!duplicated(geometry)) #|>
 #  slice_sample(n=1000)
 
-lm(log(clean_price) ~ log(dist_to_coast), data=house_apart_mm) |> summary()
+house_apart_mm |>
+  select(id, name, price = clean_price, dist_to_coast) |>
+  mutate(x = st_coordinates(geometry) |> as.data.frame()) |>
+  unnest(x) |>
+  st_set_geometry(NULL) |>
+  write_csv("data/airbnb/sydney.csv")
 
-ggplot(house_apart_mm) +
-  geom_sf(aes(col = log(clean_price)), alpha=0.5)
+gridded |> select(dist_to_coast) |>
+  mutate(x = st_coordinates(geometry) |> as.data.frame()) |>
+  unnest(x) |>
+  st_set_geometry(NULL) |>
+  write_csv("data/airbnb/sydney_grid.csv")
+
+coast |>
+  write_sf("data/airbnb/sydney_coast.geojson")
+
+# OK, read the data in
+sydney <- read_csv("data/airbnb/sydney.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+sydney_grid <- read_csv("data/airbnb/sydney_grid.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+coast <- read_sf("data/airbnb/sydney_coast.geojson")
+
+sydney <- read_csv("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+sydney_grid <- read_csv("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney_grid.csv") |>
+  st_as_sf(coords = c('X', 'Y'), crs=7856)
+
+coast <- read_sf("https://www.massey.ac.nz/~jcmarsha/233214/data/airbnb/sydney_coast.geojson")
+
+ggplot(sydney) +
+  geom_sf(aes(col = price), alpha=0.5) +
+  geom_sf(data=coast) +
+  scale_colour_continuous(trans=scales::log10_trans())
+
+# OK, now do our investigation etc
+
+lm(log(price) ~ log(dist_to_coast), data=sydney) |> summary()
 
 # try some kriging
-const.vgm <- variogram(log(clean_price) ~ 1, data=house_apart_mm)
+library(gstat)
+const.vgm <- variogram(log(price) ~ 1, data=sydney)
 plot(const.vgm)
 
 const.mod <- fit.variogram(const.vgm, model=vgm(0.5, "Sph", 5000, 0.1))
 plot(const.vgm, const.mod)
 
-const.krig <- krige(log(clean_price) ~ 1, locations=house_apart_mm,
-                    newdata=gridded, model=const.mod)
+const.krig <- krige(log(price) ~ 1, locations=sydney,
+                    newdata=sydney_grid, model=const.mod)
 
 ggplot(const.krig) +
-  geom_sf(aes(col=var1.pred)) +
+  geom_sf(aes(col=exp(var1.pred))) +
   geom_sf(data=coast) +
-  scale_color_viridis_c(limits = c(0.5, 4))
-#  geom_sf(data=house_apart_mm, mapping=aes(size=log(clean_price)),
-#          shape=21, alpha=0.1)
+  scale_color_viridis_c(trans = 'log10', limits=c(80, 3000)) +
+  labs(col = 'Price per night')
 
 ggplot(const.krig) +
   geom_sf(aes(col=var1.var)) +
-  geom_sf(data=coast) #+
+  geom_sf(data=coast) +
+  scale_color_viridis_c(option="B")
+
 #  geom_sf(data=house_apart_mm, mapping=aes(size=log(clean_price)),
  #         shape=21, alpha=0.1)
 
-covar.vgm <- variogram(log(clean_price) ~ log(dist_to_coast), data=house_apart_mm)
+covar.vgm <- variogram(log(price) ~ log(dist_to_coast), data=sydney)
 plot(covar.vgm)
 
 covar.mod <- fit.variogram(covar.vgm, model=vgm(0.5, "Sph", 5000, 0.1))
 plot(covar.vgm, covar.mod)
 
-covar.krig <- krige(log(clean_price) ~ log(dist_to_coast), locations=house_apart_mm,
-                    newdata=gridded, model=covar.mod)
+covar.krig <- krige(log(price) ~ log(dist_to_coast), locations=sydney,
+                    newdata=sydney_grid, model=covar.mod)
 
 ggplot(covar.krig) +
-  geom_sf(aes(col=var1.pred)) +
+  geom_sf(aes(col=exp(var1.pred))) +
   geom_sf(data=coast) +
-  scale_color_viridis_c(limits=c(0.5,4))
+  scale_color_viridis_c(trans = 'log10', limits=c(80,3000)) +
+  labs(col = 'Price per night')
 #  geom_sf(data=house_apart_mm, mapping=aes(size=log(clean_price)),
 #          shape=21, alpha=0.3)
 
 ggplot(covar.krig) +
   geom_sf(aes(col=var1.var)) +
-  geom_sf(data=coast)
+  geom_sf(data=coast) +
+  scale_color_viridis_c(option="B")
+
 
 ggplot(house_apart_mm) +
   geom_point(aes(x=dist_to_coast, y=clean_price)) +

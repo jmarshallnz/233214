@@ -151,7 +151,7 @@ be more usefully represented via contours on top of the relative risk plot:
 ```{r}
 ggplot(rr.df) +
   geom_raster(aes(x=x, y=y, fill=value)) +
-  geom_contour(data=tol.df, mapping=aes(x=x, y=y, z=value, linetype=as_factor(..level..)),
+  geom_contour(data=tol.df, mapping=aes(x=x, y=y, z=value, linetype=as_factor(after_stat(level))),
                breaks=c(0.05, 0.01), col='black') +
   geom_polygon(data=window, aes(x=x, y=y), fill='transparent', col='black') +
   coord_fixed() +

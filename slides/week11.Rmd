@@ -492,7 +492,7 @@ ggplot(data=rr.df,
   geom_raster(mapping=aes(fill=value)) +
   geom_contour(data=tol.df,
                mapping=aes(z=value,
-                           linetype=factor(..level..)),
+                           linetype=factor(after_stat(level))),
                breaks=c(0.05, 0.01),
                col='black') +
   geom_polygon(data=window, 

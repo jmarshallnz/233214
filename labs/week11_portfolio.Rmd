@@ -15,13 +15,13 @@ at adaptive bandwidths, will then look at the importance of denominators, and ho
 
 ## Packages
 
-Today we'll be using the `tidyverse` for ggplot charts, `sparr` for our spatial analyses, and will use `raster` and `maptools` for loading up a pixel image. You might need to install the `maptools` package if you haven't done so already. Let's load them:
+Today we'll be using the `tidyverse` for ggplot charts, `sparr` for our spatial analyses, and will use `terra` and `stars` for loading up a pixel image. You might need to install these if you haven't done so already. Let's load them:
 
 ```{r, message=FALSE}
 library(tidyverse)
 library(sparr)
-library(raster)
-library(maptools)
+library(terra)
+library(stars)
 ```
 
 ## Data
@@ -107,8 +107,8 @@ WRITE YOUR ANSWER HERE
 The following code reads in a raster of the Social Deprivation Index (SDI), converts it to a pixel image for use in our `ppm` modelling, and plots it. A value of 1 indicates low social deprivation (i.e. relatively affluent) whereas a value of 10 indicates high social deprivation (i.e. relatively poor).
 
 ```{r}
-sdi.rast = raster("https://www.massey.ac.nz/~jcmarsha/233214/data/palmy_SDI.tif")
-sdi.im <- as.im(sdi.rast)
+sdi.rast = rast("https://www.massey.ac.nz/~jcmarsha/233214/data/palmy_SDI.tif")
+sdi.im <- sdi.rast |> st_as_stars() |> as.im()
 plot(sdi.im)
 ```
 
